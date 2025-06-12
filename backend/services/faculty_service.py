@@ -264,40 +264,48 @@ class FacultyService:
     
     @staticmethod
     def get_dashboard_summary(faculty_id):
-        """Get summary data for faculty dashboard"""
+        """Get dashboard summary statistics for faculty"""
         try:
             # Get course count
-            course_count = CourseOffering.query.filter_by(
-                faculty_id=faculty_id
-            ).count()
+            course_count = CourseOffering.query.filter_by(faculty_id=faculty_id).count()
             
-            # Get total student count
-            offerings = CourseOffering.query.filter_by(faculty_id=faculty_id).all()
-            offering_ids = [o.offering_id for o in offerings]
-            
-            student_count = Enrollment.query.filter(
-                Enrollment.offering_id.in_(offering_ids),
+            # Get total student count across all courses
+            student_count = db.session.query(
+                func.count(distinct(Enrollment.student_id))
+            ).join(
+                CourseOffering, CourseOffering.offering_id == Enrollment.offering_id
+            ).filter(
+                CourseOffering.faculty_id == faculty_id,
                 Enrollment.enrollment_status == 'enrolled'
-            ).count()
+            ).scalar() or 0
             
             # Get at-risk student count
             at_risk_count = db.session.query(
                 func.count(distinct(Enrollment.student_id))
             ).join(
+                CourseOffering, CourseOffering.offering_id == Enrollment.offering_id
+            ).join(
                 Prediction, Prediction.enrollment_id == Enrollment.enrollment_id
             ).filter(
-                Enrollment.offering_id.in_(offering_ids),
+                CourseOffering.faculty_id == faculty_id,
                 Enrollment.enrollment_status == 'enrolled',
-                or_(
-                    Prediction.predicted_grade.in_(['D', 'F']),
-                    Prediction.risk_level.in_(['medium', 'high'])
-                )
+                Prediction.risk_level.in_(['high', 'very_high'])
+            ).scalar() or 0
+            
+            # Get assessment count
+            assessment_count = db.session.query(
+                func.count(Assessment.assessment_id)
+            ).join(
+                CourseOffering, CourseOffering.offering_id == Assessment.offering_id
+            ).filter(
+                CourseOffering.faculty_id == faculty_id
             ).scalar() or 0
             
             return {
                 'course_count': course_count,
                 'student_count': student_count,
-                'at_risk_count': at_risk_count
+                'at_risk_count': at_risk_count,
+                'assessment_count': assessment_count
             }
             
         except Exception as e:
@@ -305,30 +313,28 @@ class FacultyService:
             return {
                 'course_count': 0,
                 'student_count': 0,
-                'at_risk_count': 0
+                'at_risk_count': 0,
+                'assessment_count': 0
             }
+
     
     @staticmethod
     def _calculate_student_attendance_rate(enrollment_id):
-        """Calculate attendance rate for a student enrollment"""
+        """Calculate attendance rate for a student"""
         try:
-            total_classes = Attendance.query.filter_by(
-                enrollment_id=enrollment_id
-            ).count()
+            total_classes = Attendance.query.filter_by(enrollment_id=enrollment_id).count()
+            if total_classes == 0:
+                return 0
             
             attended_classes = Attendance.query.filter_by(
-                enrollment_id=enrollment_id
-            ).filter(
-                Attendance.status.in_(['present', 'late'])
+                enrollment_id=enrollment_id,
+                status='present'
             ).count()
             
-            if total_classes > 0:
-                return round((attended_classes / total_classes) * 100, 2)
-            return 0.0
-            
+            return round((attended_classes / total_classes) * 100, 2)
         except Exception as e:
             logger.error(f"Error calculating attendance rate: {str(e)}")
-            return 0.0
+            return 0
     
     @staticmethod
     def _identify_risk_factors(enrollment_id):
@@ -828,6 +834,99 @@ class FacultyService:
         except Exception as e:
             logger.error(f"Error getting student interventions: {str(e)}")
             return []
+        
+    @staticmethod
+    def get_course_statistics(offering_id):
+        """Get detailed statistics for a specific course"""
+        try:
+            # Get basic course info
+            course_offering = db.session.query(
+                CourseOffering,
+                Course.course_code,
+                Course.course_name,
+                Course.credits
+            ).join(
+                Course, Course.course_id == CourseOffering.course_id
+            ).filter(
+                CourseOffering.offering_id == offering_id
+            ).first()
+            
+            if not course_offering:
+                return None
+            
+            offering, course_code, course_name, credits = course_offering
+            
+            # Get enrollment statistics
+            total_enrolled = Enrollment.query.filter_by(
+                offering_id=offering_id,
+                enrollment_status='enrolled'
+            ).count()
+            
+            # Get attendance statistics
+            avg_attendance = db.session.query(
+                func.avg(
+                    func.count(Attendance.attendance_id).filter(
+                        Attendance.status == 'present'
+                    ) * 100.0 / func.count(Attendance.attendance_id)
+                )
+            ).join(
+                Enrollment, Enrollment.enrollment_id == Attendance.enrollment_id
+            ).filter(
+                Enrollment.offering_id == offering_id,
+                Enrollment.enrollment_status == 'enrolled'
+            ).group_by(
+                Enrollment.enrollment_id
+            ).scalar() or 0
+            
+            # Get grade distribution
+            grade_distribution = db.session.query(
+                Prediction.predicted_grade,
+                func.count(Prediction.predicted_grade)
+            ).join(
+                Enrollment, Enrollment.enrollment_id == Prediction.enrollment_id
+            ).filter(
+                Enrollment.offering_id == offering_id,
+                Enrollment.enrollment_status == 'enrolled'
+            ).group_by(
+                Prediction.predicted_grade
+            ).all()
+            
+            grade_dist_dict = dict(grade_distribution) if grade_distribution else {}
+            
+            # Get at-risk student count
+            at_risk_count = db.session.query(
+                func.count(Enrollment.enrollment_id)
+            ).join(
+                Prediction, Prediction.enrollment_id == Enrollment.enrollment_id
+            ).filter(
+                Enrollment.offering_id == offering_id,
+                Enrollment.enrollment_status == 'enrolled',
+                or_(
+                    Prediction.predicted_grade.in_(['D', 'F']),
+                    Prediction.risk_level.in_(['high', 'very_high'])
+                )
+            ).scalar() or 0
+            
+            return {
+                'offering_id': offering_id,
+                'course_code': course_code,
+                'course_name': course_name,
+                'credits': credits,
+                'section': offering.section_number,
+                'capacity': offering.capacity,
+                'enrolled_count': total_enrolled,
+                'attendance_rate': round(avg_attendance, 2),
+                'at_risk_count': at_risk_count,
+                'grade_distribution': grade_dist_dict,
+                'meeting_pattern': offering.meeting_pattern,
+                'location': offering.location
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting course statistics: {str(e)}")
+            return None
+
+  
 
 
 

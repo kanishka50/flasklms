@@ -631,3 +631,89 @@ def get_course_assessments(offering_id):
     except Exception as e:
         logger.error(f"Error getting assessments: {str(e)}")
         return error_response('Failed to get assessments', 500)
+    
+    
+@faculty_bp.route('/courses/<int:offering_id>/students', methods=['GET'])
+@jwt_required()
+@faculty_required
+def get_course_students(offering_id):
+    """Get students enrolled in a specific course offering"""
+    try:
+        # Get current user
+        user_id = get_jwt_identity()
+        user = get_user_by_id(user_id)
+        
+        if not user or not user.faculty:
+            return jsonify({
+                'status': 'error',
+                'message': 'Faculty profile not found'
+            }), 404
+        
+        faculty_id = user.faculty.faculty_id
+        
+        # Verify faculty teaches this course
+        course_offering = CourseOffering.query.filter_by(
+            offering_id=offering_id,
+            faculty_id=faculty_id
+        ).first()
+        
+        if not course_offering:
+            return jsonify({
+                'status': 'error',
+                'message': 'You are not authorized to view this course'
+            }), 403
+        
+        # Get students enrolled in this course
+        students = faculty_service.get_students_by_course(offering_id)
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'students': students,
+                'offering_id': offering_id,
+                'course_info': {
+                    'course_code': course_offering.course.course_code,
+                    'course_name': course_offering.course.course_name,
+                    'section': course_offering.section_number
+                }
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting course students: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': 'Failed to load course students'
+        }), 500
+
+@faculty_bp.route('/dashboard/summary', methods=['GET'])
+@jwt_required()
+@faculty_required
+def get_dashboard_summary():
+    """Get dashboard summary for faculty"""
+    try:
+        user_id = get_jwt_identity()
+        user = get_user_by_id(user_id)
+        
+        if not user or not user.faculty:
+            return jsonify({
+                'status': 'error',
+                'message': 'Faculty profile not found'
+            }), 404
+        
+        faculty_id = user.faculty.faculty_id
+        
+        # Get dashboard summary
+        summary = faculty_service.get_dashboard_summary(faculty_id)
+        
+        return jsonify({
+            'status': 'success',
+            'data': summary
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting dashboard summary: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': 'Failed to load dashboard summary'
+        }), 500

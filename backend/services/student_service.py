@@ -1,9 +1,9 @@
 from backend.models import (
     Student, Enrollment, Course, Assessment, Attendance, 
-    CourseOffering, Prediction, AssessmentSubmission
+    CourseOffering, Prediction, AssessmentSubmission,Faculty, AcademicTerm, User
 )
 from backend.extensions import db
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_, desc 
 from datetime import datetime, timedelta
 import logging
 
@@ -22,122 +22,153 @@ class StudentService:
             logger.error(f"Error getting student: {str(e)}")
             return None
     
-    @staticmethod  # FIXED: Added missing @staticmethod decorator
+    @staticmethod
     def get_enrolled_courses(student_id, term_id=None):
         """Get all courses enrolled by a student"""
         try:
-            logger.info(f"Getting courses for student: {student_id}")
-            
-            # Fixed query with proper joins and attributes
+            # ✅ FIX: First, let's check what fields Faculty actually has
+            # Get faculty email from User table instead of Faculty table
             query = db.session.query(
                 Course.course_id,
                 Course.course_code,
                 Course.course_name,
                 Course.credits,
+                CourseOffering.offering_id,
+                CourseOffering.section_number,
+                CourseOffering.meeting_pattern,
+                CourseOffering.location,
                 Enrollment.enrollment_id,
                 Enrollment.enrollment_status,
-                Enrollment.final_grade
-            ).select_from(Enrollment).join(
-                CourseOffering, Enrollment.offering_id == CourseOffering.offering_id
+                Enrollment.final_grade,
+                Faculty.first_name.label('instructor_first_name'),
+                Faculty.last_name.label('instructor_last_name'),
+                # ✅ FIX: Get email from User table via faculty relationship
+                User.email.label('instructor_email')
+            ).select_from(Course).join(
+                CourseOffering, CourseOffering.course_id == Course.course_id
             ).join(
-                Course, CourseOffering.course_id == Course.course_id
+                Enrollment, Enrollment.offering_id == CourseOffering.offering_id
+            ).outerjoin(
+                Faculty, Faculty.faculty_id == CourseOffering.faculty_id
+            ).outerjoin(
+                # ✅ FIX: Join with User table to get email
+                User, User.user_id == Faculty.user_id
             ).filter(
-                Enrollment.student_id == student_id,
-                Enrollment.enrollment_status.in_(['enrolled', 'completed'])
+                Enrollment.student_id == student_id
             )
             
             # Filter by term if provided
             if term_id:
                 query = query.filter(CourseOffering.term_id == term_id)
+            else:
+                # Get current term courses if no term specified
+                current_term = AcademicTerm.query.filter_by(is_current=True).first()
+                if current_term:
+                    query = query.filter(CourseOffering.term_id == current_term.term_id)
             
             courses = query.all()
-            logger.info(f"Found {len(courses)} courses for student {student_id}")
             
-            # Convert to dictionary
             result = []
             for course in courses:
-                result.append({
+                # Calculate attendance rate for this course
+                attendance_rate = StudentService._calculate_course_attendance_rate(
+                    course.enrollment_id
+                )
+                
+                # Get latest prediction for this enrollment
+                latest_prediction = Prediction.query.filter_by(
+                    enrollment_id=course.enrollment_id
+                ).order_by(desc(Prediction.prediction_date)).first()
+                
+                # Get next upcoming assessment
+                next_assessment = StudentService._get_next_assessment(course.offering_id)
+                
+                course_data = {
                     'course_id': course.course_id,
                     'course_code': course.course_code,
                     'course_name': course.course_name,
                     'credits': course.credits,
+                    'offering_id': course.offering_id,
+                    'section': course.section_number,
+                    'meeting_pattern': course.meeting_pattern,
+                    'location': course.location,
                     'enrollment_id': course.enrollment_id,
                     'enrollment_status': course.enrollment_status,
-                    'final_grade': course.final_grade
-                })
+                    'current_grade': course.final_grade,
+                    'attendance_rate': attendance_rate,
+                    'instructor_name': f"{course.instructor_first_name} {course.instructor_last_name}" if course.instructor_first_name else 'TBA',
+                    'instructor_email': course.instructor_email,  # Now safely from User table
+                    'predicted_grade': latest_prediction.predicted_grade if latest_prediction else None,
+                    'risk_level': latest_prediction.risk_level if latest_prediction else None,
+                    'confidence_score': float(latest_prediction.confidence_score) if latest_prediction else None,
+                    'next_assessment': next_assessment
+                }
+                
+                result.append(course_data)
             
             return result
             
         except Exception as e:
             logger.error(f"Error getting enrolled courses: {str(e)}")
             import traceback
-            traceback.print_exc()
+            traceback.print_exc()  # This will help us debug further if needed
             return []
     
     @staticmethod
     def get_attendance_summary(student_id, course_id=None):
-        """Get attendance summary for a student"""
+        """Get attendance summary for student"""
         try:
-            # Simplified query without func.case
+            # Base query for enrollments
             query = db.session.query(
-                CourseOffering.course_id,
+                Enrollment.enrollment_id,
+                Course.course_code,
                 Course.course_name,
-                func.count(Attendance.attendance_id).label('total_classes')
-            ).select_from(Enrollment).join(
-                Attendance, Attendance.enrollment_id == Enrollment.enrollment_id
+                CourseOffering.offering_id
             ).join(
-                CourseOffering, Enrollment.offering_id == CourseOffering.offering_id
+                CourseOffering, CourseOffering.offering_id == Enrollment.offering_id
             ).join(
-                Course, CourseOffering.course_id == Course.course_id
+                Course, Course.course_id == CourseOffering.course_id
             ).filter(
-                Enrollment.student_id == student_id
+                Enrollment.student_id == student_id,
+                Enrollment.enrollment_status == 'enrolled'
             )
             
-            # Filter by course if provided
+            # Filter by specific course if provided
             if course_id:
-                query = query.filter(CourseOffering.course_id == course_id)
+                query = query.filter(Course.course_id == course_id)
             
-            # Group by course
-            query = query.group_by(CourseOffering.course_id, Course.course_name)
+            enrollments = query.all()
             
-            attendance_data = query.all()
-            
-            # Calculate attendance manually
-            result = []
-            for data in attendance_data:
-                # Get attended count separately
-                attended_query = db.session.query(
-                    func.count(Attendance.attendance_id)
-                ).select_from(Enrollment).join(
-                    Attendance, Attendance.enrollment_id == Enrollment.enrollment_id
-                ).join(
-                    CourseOffering, Enrollment.offering_id == CourseOffering.offering_id
-                ).filter(
-                    Enrollment.student_id == student_id,
-                    CourseOffering.course_id == data.course_id,
-                    Attendance.status.in_(['present', 'late'])
-                )
+            attendance_data = []
+            for enrollment in enrollments:
+                # Get attendance records for this enrollment
+                attendance_records = Attendance.query.filter_by(
+                    enrollment_id=enrollment.enrollment_id
+                ).all()
                 
-                attended_classes = attended_query.scalar() or 0
+                total_classes = len(attendance_records)
+                present_count = len([a for a in attendance_records if a.status == 'present'])
+                absent_count = len([a for a in attendance_records if a.status == 'absent'])
+                late_count = len([a for a in attendance_records if a.status == 'late'])
                 
-                attendance_rate = 0
-                if data.total_classes > 0:
-                    attendance_rate = (attended_classes / data.total_classes) * 100
+                attendance_rate = (present_count / total_classes * 100) if total_classes > 0 else 0
                 
-                result.append({
-                    'course_id': data.course_id,
-                    'course_name': data.course_name,
-                    'total_classes': data.total_classes,
-                    'attended_classes': attended_classes,
+                attendance_data.append({
+                    'enrollment_id': enrollment.enrollment_id,
+                    'course_code': enrollment.course_code,
+                    'course_name': enrollment.course_name,
+                    'offering_id': enrollment.offering_id,
+                    'total_classes': total_classes,
+                    'present_count': present_count,
+                    'absent_count': absent_count,
+                    'late_count': late_count,
                     'attendance_rate': round(attendance_rate, 2)
                 })
             
-            return result
+            return attendance_data
             
         except Exception as e:
             logger.error(f"Error getting attendance summary: {str(e)}")
-            import traceback
-            traceback.print_exc()
             return []
     
     @staticmethod
@@ -246,50 +277,152 @@ class StudentService:
     
     @staticmethod
     def get_dashboard_summary(student_id):
-        """Get summary data for student dashboard"""
+        """Get dashboard summary for student"""
         try:
-            # Get current GPA
-            gpa = db.session.query(Student.gpa).filter_by(student_id=student_id).scalar() or 0.0
+            # Get current term enrollments
+            current_term = AcademicTerm.query.filter_by(is_current=True).first()
+            if not current_term:
+                return StudentService._get_default_summary()
             
-            # Get overall attendance rate
-            attendance = StudentService.get_attendance_summary(student_id)
-            overall_attendance = 0
-            if attendance:
-                total_attended = sum(a['attended_classes'] for a in attendance)
-                total_classes = sum(a['total_classes'] for a in attendance)
-                if total_classes > 0:
-                    overall_attendance = (total_attended / total_classes) * 100
+            enrollments = db.session.query(Enrollment).join(
+                CourseOffering, CourseOffering.offering_id == Enrollment.offering_id
+            ).filter(
+                Enrollment.student_id == student_id,
+                CourseOffering.term_id == current_term.term_id,
+                Enrollment.enrollment_status == 'enrolled'
+            ).all()
             
-            # FIXED: Get upcoming assessments count with proper joins
-            upcoming_assessments = db.session.query(
-                func.count(Assessment.assessment_id)
-            ).select_from(Assessment).join(
-                CourseOffering, Assessment.offering_id == CourseOffering.offering_id
+            if not enrollments:
+                return StudentService._get_default_summary()
+            
+            # Calculate total credits
+            total_credits = db.session.query(
+                func.sum(Course.credits)
+            ).join(
+                CourseOffering, CourseOffering.course_id == Course.course_id
             ).join(
                 Enrollment, Enrollment.offering_id == CourseOffering.offering_id
             ).filter(
                 Enrollment.student_id == student_id,
-                Enrollment.enrollment_status == 'enrolled',
-                Assessment.due_date >= datetime.now(),
-                Assessment.due_date <= datetime.now() + timedelta(days=7)
+                CourseOffering.term_id == current_term.term_id,
+                Enrollment.enrollment_status == 'enrolled'
             ).scalar() or 0
             
+            # Calculate overall attendance rate
+            total_attendance_records = 0
+            total_present = 0
+            
+            for enrollment in enrollments:
+                attendance_records = Attendance.query.filter_by(
+                    enrollment_id=enrollment.enrollment_id
+                ).all()
+                
+                total_attendance_records += len(attendance_records)
+                total_present += len([a for a in attendance_records if a.status == 'present'])
+            
+            overall_attendance_rate = (total_present / total_attendance_records * 100) if total_attendance_records > 0 else 0
+            
+            # Calculate GPA from current grades
+            grade_points = {'A': 4.0, 'B': 3.0, 'C': 2.0, 'D': 1.0, 'F': 0.0}
+            total_grade_points = 0
+            total_credits_with_grades = 0
+            
+            for enrollment in enrollments:
+                if enrollment.final_grade and enrollment.final_grade in grade_points:
+                    course_credits = db.session.query(Course.credits).join(
+                        CourseOffering, CourseOffering.course_id == Course.course_id
+                    ).filter(
+                        CourseOffering.offering_id == enrollment.offering_id
+                    ).scalar() or 0
+                    
+                    total_grade_points += grade_points[enrollment.final_grade] * course_credits
+                    total_credits_with_grades += course_credits
+            
+            current_gpa = total_grade_points / total_credits_with_grades if total_credits_with_grades > 0 else 0
+            
+            # Count upcoming assessments
+            upcoming_assessments = db.session.query(Assessment).join(
+                CourseOffering, CourseOffering.offering_id == Assessment.offering_id
+            ).join(
+                Enrollment, Enrollment.offering_id == CourseOffering.offering_id
+            ).filter(
+                Enrollment.student_id == student_id,
+                Assessment.due_date >= datetime.now(),
+                Enrollment.enrollment_status == 'enrolled'
+            ).count()
+            
+            # Count at-risk courses
+            at_risk_courses = 0
+            for enrollment in enrollments:
+                latest_prediction = Prediction.query.filter_by(
+                    enrollment_id=enrollment.enrollment_id
+                ).order_by(desc(Prediction.prediction_date)).first()
+                
+                if latest_prediction and latest_prediction.risk_level in ['high', 'very_high']:
+                    at_risk_courses += 1
+            
             return {
-                'gpa': round(float(gpa), 2),
-                'attendance_rate': round(overall_attendance, 2),
-                'upcoming_assessments': upcoming_assessments
+                'course_count': len(enrollments),
+                'total_credits': total_credits,
+                'gpa': round(current_gpa, 2),
+                'attendance_rate': round(overall_attendance_rate, 1),
+                'upcoming_assessments': upcoming_assessments,
+                'at_risk_courses': at_risk_courses
             }
             
         except Exception as e:
             logger.error(f"Error getting dashboard summary: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return {
-                'gpa': 0.0,
-                'attendance_rate': 0.0,
-                'upcoming_assessments': 0
-            }
+            return StudentService._get_default_summary()
+        
+    @staticmethod
+    def _calculate_course_attendance_rate(enrollment_id):
+        """Calculate attendance rate for a specific enrollment"""
+        try:
+            attendance_records = Attendance.query.filter_by(
+                enrollment_id=enrollment_id
+            ).all()
+            
+            if not attendance_records:
+                return 0
+            
+            present_count = len([a for a in attendance_records if a.status == 'present'])
+            total_count = len(attendance_records)
+            
+            return round((present_count / total_count) * 100, 2)
+            
+        except Exception as e:
+            logger.error(f"Error calculating attendance rate: {str(e)}")
+            return 0
 
+    @staticmethod
+    def _get_next_assessment(offering_id):
+        """Get the next upcoming assessment for a course offering"""
+        try:
+            next_assessment = Assessment.query.filter(
+                Assessment.offering_id == offering_id,
+                Assessment.due_date >= datetime.now()
+            ).order_by(Assessment.due_date).first()
+            
+            if next_assessment:
+                return f"{next_assessment.title} (Due: {next_assessment.due_date.strftime('%m/%d/%Y')})"
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error getting next assessment: {str(e)}")
+            return None
+        
+    @staticmethod
+    def _get_default_summary():
+        """Return default summary when no data is available"""
+        return {
+            'course_count': 0,
+            'total_credits': 0,
+            'gpa': 0,
+            'attendance_rate': 0,
+            'upcoming_assessments': 0,
+            'at_risk_courses': 0
+        }
 
 # Create service instance
 student_service = StudentService()

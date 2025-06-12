@@ -4,6 +4,9 @@ from backend.services.student_service import student_service
 from backend.services.assessment_service import assessment_service
 from backend.services.auth_service import get_user_by_id
 from backend.middleware.auth_middleware import student_required
+from backend.models import Course, CourseOffering, Enrollment, Faculty, AcademicTerm, Prediction, Assessment, Attendance, AssessmentSubmission
+from sqlalchemy import func, desc
+from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
@@ -14,7 +17,7 @@ student_bp = Blueprint('student', __name__, url_prefix='/api/student')
 @jwt_required()
 @student_required
 def get_dashboard():
-    """Get student dashboard data"""
+    """Get comprehensive student dashboard data"""
     try:
         # Get current user
         user_id = get_jwt_identity()
@@ -31,14 +34,20 @@ def get_dashboard():
         # Get dashboard summary
         summary = student_service.get_dashboard_summary(student_id)
         
+        # Get recent courses (for dashboard display)
+        recent_courses = student_service.get_enrolled_courses(student_id)[:3]  # Limit to 3
+        
         return jsonify({
             'status': 'success',
             'data': {
                 'summary': summary,
+                'recent_courses': recent_courses,
                 'student': {
                     'student_id': student_id,
                     'name': f"{user.student.first_name} {user.student.last_name}",
-                    'email': user.email
+                    'email': user.email,
+                    'program_code': user.student.program_code,
+                    'year_of_study': user.student.year_of_study
                 }
             }
         })
@@ -54,7 +63,7 @@ def get_dashboard():
 @jwt_required()
 @student_required
 def get_courses():
-    """Get enrolled courses for the student"""
+    """Get enrolled courses for the student with detailed information"""
     try:
         # Get current user
         user_id = get_jwt_identity()
@@ -71,13 +80,18 @@ def get_courses():
         # Get term from query params (optional)
         term_id = request.args.get('term_id', type=int)
         
-        # Get courses
+        # Get courses using the enhanced service method
         courses = student_service.get_enrolled_courses(student_id, term_id)
         
         return jsonify({
             'status': 'success',
             'data': {
-                'courses': courses
+                'courses': courses,
+                'student_info': {
+                    'student_id': student_id,
+                    'name': f"{user.student.first_name} {user.student.last_name}",
+                    'email': user.email
+                }
             }
         })
         
@@ -351,4 +365,109 @@ def get_grade_summary():
         return jsonify({
             'status': 'error',
             'message': 'Failed to load grade summary'
+        }), 500
+    
+@student_bp.route('/courses/<string:course_id>', methods=['GET'])
+@jwt_required()
+@student_required
+def get_course_details(course_id):
+    """Get detailed information for a specific course"""
+    try:
+        # Get current user
+        user_id = get_jwt_identity()
+        user = get_user_by_id(user_id)
+        
+        if not user or not user.student:
+            return jsonify({
+                'status': 'error',
+                'message': 'Student profile not found'
+            }), 404
+        
+        student_id = user.student.student_id
+        
+        # Get the specific course enrollment
+        enrollment = db.session.query(
+            Enrollment, Course, CourseOffering, Faculty
+        ).join(
+            CourseOffering, CourseOffering.offering_id == Enrollment.offering_id
+        ).join(
+            Course, Course.course_id == CourseOffering.course_id
+        ).outerjoin(
+            Faculty, Faculty.faculty_id == CourseOffering.faculty_id
+        ).filter(
+            Enrollment.student_id == student_id,
+            Course.course_id == course_id,
+            Enrollment.enrollment_status == 'enrolled'
+        ).first()
+        
+        if not enrollment:
+            return jsonify({
+                'status': 'error',
+                'message': 'Course not found or not enrolled'
+            }), 404
+        
+        enrollment_obj, course, offering, faculty = enrollment
+        
+        # Get detailed course information
+        course_details = {
+            'course_id': course.course_id,
+            'course_code': course.course_code,
+            'course_name': course.course_name,
+            'credits': course.credits,
+            'description': course.description,
+            'section': offering.section_number,
+            'meeting_pattern': offering.meeting_pattern,
+            'location': offering.location,
+            'instructor_name': f"{faculty.first_name} {faculty.last_name}" if faculty else 'TBA',
+            'instructor_email': faculty.email if faculty else None,
+            'enrollment_status': enrollment_obj.enrollment_status,
+            'current_grade': enrollment_obj.final_grade
+        }
+        
+        # Get attendance data
+        attendance_summary = student_service.get_attendance_summary(student_id, course_id)
+        
+        # Get assessments for this course
+        assessments = db.session.query(Assessment).join(
+            CourseOffering, CourseOffering.offering_id == Assessment.offering_id
+        ).join(
+            Enrollment, Enrollment.offering_id == CourseOffering.offering_id
+        ).filter(
+            Enrollment.student_id == student_id,
+            CourseOffering.course_id == course_id
+        ).all()
+        
+        assessment_data = []
+        for assessment in assessments:
+            # Get submission if exists
+            submission = AssessmentSubmission.query.filter_by(
+                assessment_id=assessment.assessment_id,
+                student_id=student_id
+            ).first()
+            
+            assessment_data.append({
+                'assessment_id': assessment.assessment_id,
+                'title': assessment.title,
+                'type': assessment.type_id,  # You may want to join with AssessmentType
+                'max_score': assessment.max_score,
+                'due_date': assessment.due_date.isoformat() if assessment.due_date else None,
+                'weight': float(assessment.weight),
+                'submission_score': submission.score if submission else None,
+                'submitted_at': submission.submitted_at.isoformat() if submission and submission.submitted_at else None
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'course': course_details,
+                'attendance': attendance_summary,
+                'assessments': assessment_data
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting course details: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': 'Failed to load course details'
         }), 500

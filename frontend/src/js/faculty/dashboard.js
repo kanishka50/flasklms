@@ -53,23 +53,51 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     async function loadDashboardData() {
-        try {
-            // Load dashboard summary
-            await loadDashboardSummary();
-            
-            // Load courses
-            await loadCourses();
-            
-            // Load recent assessments
-            await loadRecentAssessments();
-            
-            // Load at-risk students
-            await loadAtRiskStudents();
-            
-        } catch (error) {
-            console.error('Error loading dashboard data:', error);
+    try {
+        console.log('Loading dashboard data...');
+        
+        // Load courses and dashboard stats in parallel
+        const [coursesResponse, summaryResponse, atRiskResponse, assessmentsResponse] = await Promise.all([
+            apiClient.get('faculty/courses'),
+            apiClient.get('faculty/dashboard/summary').catch(err => ({status: 'error', data: {}})),
+            apiClient.get('faculty/at-risk-students').catch(err => ({status: 'error', data: {students: []}})),
+            apiClient.get('faculty/assessments').catch(err => ({status: 'error', data: {assessments: []}}))
+        ]);
+        
+        console.log('Dashboard data loaded:', {
+            courses: coursesResponse,
+            summary: summaryResponse,
+            atRisk: atRiskResponse,
+            assessments: assessmentsResponse
+        });
+        
+        // Update courses
+        if (coursesResponse.status === 'success' && coursesResponse.data.courses) {
+            displayCourses(coursesResponse.data.courses);
+            updateCourseStats(coursesResponse.data.courses);
         }
+        
+        // Update summary statistics
+        if (summaryResponse.status === 'success' && summaryResponse.data) {
+            updateDashboardStats(summaryResponse.data);
+        }
+        
+        // Update at-risk students
+        if (atRiskResponse.status === 'success' && atRiskResponse.data) {
+            displayAtRiskStudents(atRiskResponse.data.students || []);
+        }
+        
+        // Update assessments
+        if (assessmentsResponse.status === 'success' && assessmentsResponse.data) {
+            displayRecentAssessments(assessmentsResponse.data.assessments || []);
+        }
+        
+    } catch (error) {
+        console.error('Error loading dashboard data:', error);
+        showError('Failed to load dashboard data. Please refresh the page.');
     }
+}
+
     
     async function loadDashboardSummary() {
         try {
@@ -149,48 +177,59 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function displayCourses(courses) {
-        if (!courses || courses.length === 0) {
-            coursesList.innerHTML = '<p class="text-gray-500">No courses assigned</p>';
-            return;
-        }
+    if (!courses || courses.length === 0) {
+        coursesList.innerHTML = '<p class="text-gray-500">No courses assigned</p>';
+        return;
+    }
+    
+    // Show only first 3 courses on dashboard
+    const displayCourses = courses.slice(0, 3);
+    
+    let html = '';
+    displayCourses.forEach(course => {
+        const statusColor = course.enrollment_status === 'completed' ? 
+            'text-green-600' : 'text-blue-600';
         
-        // Show only first 3 courses
-        const displayCourses = courses.slice(0, 3);
-        
-        let html = '';
-        displayCourses.forEach(course => {
-            const statusColor = course.enrollment_status === 'completed' ? 'text-green-600' : 'text-blue-600';
-            
-            html += `
-                <div class="border-b pb-3 mb-3 last:border-b-0">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <h4 class="font-semibold text-gray-900">${course.course_name}</h4>
-                            <p class="text-sm text-gray-600">${course.course_code} • Section ${course.section}</p>
-                            <p class="text-xs text-gray-500">${course.enrolled_count || 0} students enrolled</p>
-                        </div>
-                        <div class="text-right">
-                            <a href="students.html?course=${course.offering_id}" class="text-blue-600 hover:text-blue-800 text-sm">
-                                View Students →
-                            </a>
+        html += `
+            <div class="border-b pb-3 mb-3 last:border-b-0">
+                <div class="flex justify-between items-start">
+                    <div class="flex-1">
+                        <h4 class="font-semibold text-gray-900">${course.course_name}</h4>
+                        <p class="text-sm text-gray-600">${course.course_code} • Section ${course.section}</p>
+                        <p class="text-xs text-gray-500">${course.enrolled_count || 0}/${course.capacity} students</p>
+                        <div class="flex items-center mt-1 text-xs text-gray-500">
+                            <i class="fas fa-clock mr-1"></i>
+                            <span>${course.meeting_pattern || 'TBA'}</span>
                         </div>
                     </div>
+                    <div class="text-right space-y-1">
+                        <a href="students.html?course=${course.offering_id}" 
+                           class="block text-blue-600 hover:text-blue-800 text-sm">
+                            Students →
+                        </a>
+                        <a href="attendance.html?course=${course.offering_id}" 
+                           class="block text-green-600 hover:text-green-800 text-sm">
+                            Attendance →
+                        </a>
+                    </div>
                 </div>
-            `;
-        });
-        
-        if (courses.length > 3) {
-            html += `
-                <div class="text-center pt-2">
-                    <a href="courses.html" class="text-blue-600 hover:text-blue-800 text-sm font-medium">
-                        View all ${courses.length} courses →
-                    </a>
-                </div>
-            `;
-        }
-        
-        coursesList.innerHTML = html;
+            </div>
+        `;
+    });
+    
+    // Add "View All" link if there are more courses
+    if (courses.length > 3) {
+        html += `
+            <div class="text-center pt-3 border-t">
+                <a href="courses.html" class="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                    View all ${courses.length} courses →
+                </a>
+            </div>
+        `;
     }
+    
+    coursesList.innerHTML = html;
+}
     
     function displayRecentAssessments(assessments) {
         if (!assessments || assessments.length === 0) {
@@ -289,4 +328,43 @@ document.addEventListener('DOMContentLoaded', function() {
         
         atRiskStudentsList.innerHTML = html;
     }
+
+    function updateCourseStats(courses) {
+    const totalCourses = courses.length;
+    const totalStudents = courses.reduce((sum, course) => sum + (course.enrolled_count || 0), 0);
+    
+    if (courseCount) courseCount.textContent = totalCourses;
+    if (studentCount) studentCount.textContent = totalStudents;
+}
+
+function updateDashboardStats(summary) {
+    if (courseCount) courseCount.textContent = summary.course_count || 0;
+    if (studentCount) studentCount.textContent = summary.student_count || 0;
+    if (atRiskCount) atRiskCount.textContent = summary.at_risk_count || 0;
+    if (totalAssessments) totalAssessments.textContent = summary.assessment_count || 0;
+    if (totalAssessmentsDetail) totalAssessmentsDetail.textContent = summary.assessment_count || 0;
+}
+
+function showError(message) {
+    // Create a toast notification
+    const toast = document.createElement('div');
+    toast.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded shadow-lg z-50';
+    toast.innerHTML = `
+        <div class="flex items-center">
+            <i class="fas fa-exclamation-circle mr-2"></i>
+            ${message}
+        </div>
+    `;
+    
+    document.body.appendChild(toast);
+    
+    // Remove after 5 seconds
+    setTimeout(() => {
+        if (toast.parentNode) {
+            toast.parentNode.removeChild(toast);
+        }
+    }, 5000);
+}
+
+
 });
