@@ -41,3 +41,29 @@ def get_current_user():
     """Get current user from JWT identity"""
     user_id = get_jwt_identity()
     return User.query.get(user_id)
+
+
+def auth_required(fn):
+    """Decorator to check if user is authenticated"""
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        # Verify JWT
+        verify_jwt_in_request()
+        
+        # Get user ID from JWT
+        user_id = get_jwt_identity()
+        
+        # Get user
+        user = User.query.get(user_id)
+        
+        # Check if user exists
+        if not user:
+            logger.warning(f"Access denied: User {user_id} not found")
+            return jsonify({
+                'status': 'error',
+                'message': 'Access denied'
+            }), 403
+        
+        return fn(*args, **kwargs)
+    
+    return wrapper

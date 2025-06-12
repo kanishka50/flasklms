@@ -10,30 +10,155 @@
     
     <!-- Custom CSS -->
     <link href="../css/main.css" rel="stylesheet">
+    <style>
+    /* Active page highlighting */
+    .nav-link.active,
+    .mobile-nav-link.active {
+        background-color: #374151; /* gray-700 */
+        color: #ffffff;
+    }
+    
+    /* Smooth transitions */
+    .nav-link,
+    .mobile-nav-link {
+        transition: all 0.2s ease-in-out;
+    }
+    
+    /* Hover effects for better UX */
+    .nav-link:hover,
+    .mobile-nav-link:hover {
+        transform: translateY(-1px);
+    }
+</style>
 </head>
 <body class="bg-gray-100">
     <div class="min-h-screen">
         <!-- Navigation -->
-        <nav class="bg-gray-800 text-white shadow-lg">
-            <div class="container mx-auto px-4">
-                <div class="flex justify-between items-center py-4">
-                    <a class="text-xl font-bold" href="#">Grade Prediction System</a>
-                    <div class="hidden md:block">
-                        <div class="flex space-x-4">
-                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="dashboard.html">Dashboard</a>
-                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="courses.html">My Courses</a>
-                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="assessments.html">Assessments</a>
-                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="grades.html">Grades</a>
-                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="predictions.html">Predictions</a>
+        <nav class="bg-gray-800 text-white shadow-lg sticky top-0 z-50">
+    <div class="container mx-auto px-4">
+        <div class="flex justify-between items-center py-4">
+            <!-- Logo/Brand -->
+            <div class="flex items-center">
+                <a href="dashboard.html" class="text-xl font-bold text-white hover:text-gray-200 transition-colors">
+                    <i class="fas fa-graduation-cap mr-2"></i>
+                    Student Portal
+                </a>
+            </div>
+            
+            <!-- Desktop Navigation Links -->
+            <div class="hidden md:flex items-center space-x-1">
+                <a href="dashboard.html" 
+                   class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-all duration-200 flex items-center"
+                   data-page="dashboard">
+                    <i class="fas fa-tachometer-alt mr-2"></i>
+                    Dashboard
+                </a>
+                <a href="courses.html" 
+                   class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-all duration-200 flex items-center"
+                   data-page="courses">
+                    <i class="fas fa-book mr-2"></i>
+                    My Courses
+                </a>
+                <a href="attendance.html" 
+                   class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-all duration-200 flex items-center"
+                   data-page="attendance">
+                    <i class="fas fa-calendar-check mr-2"></i>
+                    Attendance
+                </a>
+                <a href="assessments.html" 
+                   class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-all duration-200 flex items-center"
+                   data-page="assessments">
+                    <i class="fas fa-clipboard-check mr-2"></i>
+                    Assessments
+                </a>
+                <a href="grades.html" 
+                   class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-all duration-200 flex items-center"
+                   data-page="grades">
+                    <i class="fas fa-chart-line mr-2"></i>
+                    Grades
+                </a>
+                <a href="predictions.html" 
+                   class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-all duration-200 flex items-center"
+                   data-page="predictions">
+                    <i class="fas fa-crystal-ball mr-2"></i>
+                    Predictions
+                </a>
+            </div>
+            
+            <!-- User Menu -->
+            <div class="flex items-center space-x-4">
+                <!-- User Info -->
+                <div class="hidden md:flex items-center space-x-3">
+                    <div class="flex items-center space-x-2">
+                        <div class="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center">
+                            <i class="fas fa-user text-sm"></i>
                         </div>
+                        <span id="username" class="text-sm text-gray-300">Loading...</span>
                     </div>
-                    <div>
-                        <span id="username" class="mr-4"></span>
-                        <button id="logoutBtn" class="px-3 py-2 rounded-md hover:bg-gray-700">Logout</button>
+                </div>
+                
+                <!-- Logout Button -->
+                <button id="logoutBtn" 
+                        class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center">
+                    <i class="fas fa-sign-out-alt mr-2"></i>
+                    Logout
+                </button>
+                
+                <!-- Mobile menu button -->
+                <button id="mobileMenuBtn" 
+                        class="md:hidden p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-white">
+                    <i class="fas fa-bars text-lg"></i>
+                </button>
+            </div>
+        </div>
+        
+        <!-- Mobile Navigation Menu -->
+        <div id="mobileMenu" class="md:hidden hidden pb-4">
+            <div class="space-y-1">
+                <a href="dashboard.html" 
+                   class="mobile-nav-link block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+                   data-page="dashboard">
+                    <i class="fas fa-tachometer-alt mr-3"></i>Dashboard
+                </a>
+                <a href="courses.html" 
+                   class="mobile-nav-link block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+                   data-page="courses">
+                    <i class="fas fa-book mr-3"></i>My Courses
+                </a>
+                <a href="attendance.html" 
+                   class="mobile-nav-link block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+                   data-page="attendance">
+                    <i class="fas fa-calendar-check mr-3"></i>Attendance
+                </a>
+                <a href="assessments.html" 
+                   class="mobile-nav-link block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+                   data-page="assessments">
+                    <i class="fas fa-clipboard-check mr-3"></i>Assessments
+                </a>
+                <a href="grades.html" 
+                   class="mobile-nav-link block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+                   data-page="grades">
+                    <i class="fas fa-chart-line mr-3"></i>Grades
+                </a>
+                <a href="predictions.html" 
+                   class="mobile-nav-link block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+                   data-page="predictions">
+                    <i class="fas fa-crystal-ball mr-3"></i>Predictions
+                </a>
+                
+                <!-- Mobile User Info -->
+                <div class="border-t border-gray-700 pt-4 mt-4">
+                    <div class="flex items-center px-3 py-2">
+                        <div class="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center mr-3">
+                            <i class="fas fa-user text-sm"></i>
+                        </div>
+                        <span id="mobileUsername" class="text-sm text-gray-300">Loading...</span>
                     </div>
                 </div>
             </div>
-        </nav>
+        </div>
+    </div>
+</nav>
         
         <div class="container mx-auto px-4 py-6">
             <!-- Page Header -->
@@ -129,5 +254,71 @@
     <script src="../js/api/auth.js"></script>
     <script src="../js/utils/auth-guard.js"></script>
     <script src="../js/student/assessments.js"></script>
+    <script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Mobile menu toggle
+    const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+    const mobileMenu = document.getElementById('mobileMenu');
+    
+    if (mobileMenuBtn && mobileMenu) {
+        mobileMenuBtn.addEventListener('click', function() {
+            mobileMenu.classList.toggle('hidden');
+            
+            // Animate hamburger icon
+            const icon = mobileMenuBtn.querySelector('i');
+            if (mobileMenu.classList.contains('hidden')) {
+                icon.classList.remove('fa-times');
+                icon.classList.add('fa-bars');
+            } else {
+                icon.classList.remove('fa-bars');
+                icon.classList.add('fa-times');
+            }
+        });
+    }
+    
+    // Highlight active page
+    function setActivePage() {
+        const currentPage = window.location.pathname.split('/').pop().replace('.html', '') || 'dashboard';
+        
+        // Remove active class from all links
+        document.querySelectorAll('.nav-link, .mobile-nav-link').forEach(link => {
+            link.classList.remove('active');
+        });
+        
+        // Add active class to current page links
+        document.querySelectorAll(`[data-page="${currentPage}"]`).forEach(link => {
+            link.classList.add('active');
+        });
+    }
+    
+    // Set active page on load
+    setActivePage();
+    
+    // Close mobile menu when clicking on a link
+    document.querySelectorAll('.mobile-nav-link').forEach(link => {
+        link.addEventListener('click', function() {
+            mobileMenu.classList.add('hidden');
+            const icon = mobileMenuBtn.querySelector('i');
+            icon.classList.remove('fa-times');
+            icon.classList.add('fa-bars');
+        });
+    });
+    
+    // Update username in both desktop and mobile
+    function updateUsername() {
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        const username = user.username || 'Student';
+        
+        const usernameElement = document.getElementById('username');
+        const mobileUsernameElement = document.getElementById('mobileUsername');
+        
+        if (usernameElement) usernameElement.textContent = username;
+        if (mobileUsernameElement) mobileUsernameElement.textContent = username;
+    }
+    
+    // Update username on load
+    updateUsername();
+});
+</script>
 </body>
 </html>

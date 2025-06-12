@@ -1,6 +1,7 @@
 # backend/services/attendance_service.py
-from backend.models.attendance import Attendance
-from backend.models.academic import Enrollment, Student, CourseOffering, Course
+from backend.models.tracking import Attendance
+from backend.models.academic import Enrollment,  CourseOffering, Course
+from backend.models.user import Student
 from backend.extensions import db
 from sqlalchemy import func, desc, and_, case
 from datetime import datetime, date, timedelta

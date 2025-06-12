@@ -4,6 +4,7 @@ from config import config
 from backend.extensions import db, login_manager, jwt, cors, mail, migrate
 from backend.utils.cors import configure_cors
 from flask_jwt_extended import JWTManager
+# REMOVE THIS LINE: from backend.api.student.routes import student_bp
 
 def create_app(config_name=None):
     """Create and configure the Flask application"""
@@ -43,19 +44,19 @@ def create_app(config_name=None):
     app.logger.info(f"Application started in {config_name} mode")
 
     # Initialize JWT
-    jwt_manager = JWTManager(app)
+    jwt = JWTManager(app)
     
     # Import User model here before using it
     from backend.models import User
     
-    @jwt_manager.user_identity_loader
+    @jwt.user_identity_loader
     def user_identity_lookup(user):
-        return user.user_id if hasattr(user, 'user_id') else user
+        return user.id if hasattr(user, 'id') else user
     
-    @jwt_manager.user_lookup_loader
+    @jwt.user_lookup_loader
     def user_lookup_callback(_jwt_header, jwt_data):
         identity = jwt_data["sub"]
-        return User.query.filter_by(user_id=identity).one_or_none()
+        return User.query.filter_by(user_id=identity).one_or_none()  # Also note: should be user_id, not id
     
     return app
 
@@ -82,85 +83,31 @@ def initialize_extensions(app):
 def register_blueprints(app):
     """Register Flask blueprints"""
     try:
-        # Import auth blueprints
-        from backend.api.auth.routes import auth_bp
+         # Import blueprints INSIDE the function to avoid circular imports
+        from backend.api.auth import auth_bp
+        from backend.api.student import student_bp
+        from backend.api.student.attendance_routes import student_attendance_bp  # ADD THIS
+        from backend.api.faculty import faculty_bp
+        from backend.api.faculty.attendance_routes import faculty_attendance_bp  # ADD THIS TOO
+        from backend.api.admin import admin_bp
+        from backend.api.prediction import prediction_bp
+        from backend.api.common import common_bp
         
-        # Import student blueprints (both main and attendance)
-        from backend.api.student.routes import student_bp
-        from backend.api.student.attendance_routes import student_attendance_bp
-        
-        # Import faculty blueprints (both main and attendance)
-        from backend.api.faculty.routes import faculty_bp
-        from backend.api.faculty.attendance_routes import faculty_attendance_bp
-        
-        # Import other blueprints
-        from backend.api.admin.routes import admin_bp
-        from backend.api.prediction.routes import prediction_bp
-        from backend.api.common.routes import common_bp
-        
-        # Register blueprints WITHOUT additional URL prefixes 
-        # (since they already have prefixes defined in their Blueprint creation)
-        app.register_blueprint(auth_bp)
-        
-        # Student blueprints
-        app.register_blueprint(student_bp)
-        app.register_blueprint(student_attendance_bp)
-        
-        # Faculty blueprints
-        app.register_blueprint(faculty_bp)
-        app.register_blueprint(faculty_attendance_bp)
-        
-        # Other blueprints
-        app.register_blueprint(admin_bp)
-        app.register_blueprint(prediction_bp)
-        app.register_blueprint(common_bp)
+        # Register blueprints with URL prefixes
+        app.register_blueprint(auth_bp, url_prefix='/api/auth')
+        app.register_blueprint(student_bp, url_prefix='/api/student')
+        app.register_blueprint(student_attendance_bp)  # ADD THIS (already has prefix)
+        app.register_blueprint(faculty_bp, url_prefix='/api/faculty')
+        app.register_blueprint(faculty_attendance_bp)  # ADD THIS (already has prefix)
+        app.register_blueprint(admin_bp, url_prefix='/api/admin')
+        app.register_blueprint(prediction_bp, url_prefix='/api/prediction')
+        app.register_blueprint(common_bp, url_prefix='/api/common')
         
         app.logger.info("All blueprints registered successfully")
         
-        # Log registered routes for debugging
-        app.logger.debug("Registered routes:")
-        for rule in app.url_map.iter_rules():
-            app.logger.debug(f"  {rule.rule} -> {rule.endpoint}")
-            
     except ImportError as e:
         app.logger.error(f"Error importing blueprints: {str(e)}")
-        # Continue with partial registration for development
-        
-        # Register only available blueprints
-        try:
-            from backend.api.auth.routes import auth_bp
-            app.register_blueprint(auth_bp)
-            app.logger.info("Auth blueprint registered")
-        except ImportError:
-            app.logger.warning("Auth blueprint not available")
-        
-        try:
-            from backend.api.student.routes import student_bp
-            app.register_blueprint(student_bp)
-            app.logger.info("Student blueprint registered")
-        except ImportError:
-            app.logger.warning("Student blueprint not available")
-        
-        try:
-            from backend.api.student.attendance_routes import student_attendance_bp
-            app.register_blueprint(student_attendance_bp)
-            app.logger.info("Student attendance blueprint registered")
-        except ImportError:
-            app.logger.warning("Student attendance blueprint not available")
-        
-        try:
-            from backend.api.faculty.routes import faculty_bp
-            app.register_blueprint(faculty_bp)
-            app.logger.info("Faculty blueprint registered")
-        except ImportError:
-            app.logger.warning("Faculty blueprint not available")
-        
-        try:
-            from backend.api.faculty.attendance_routes import faculty_attendance_bp
-            app.register_blueprint(faculty_attendance_bp)
-            app.logger.info("Faculty attendance blueprint registered")
-        except ImportError:
-            app.logger.warning("Faculty attendance blueprint not available")
+        # Continue anyway to get partial functionality
 
 def register_error_handlers(app):
     """Register error handlers"""
@@ -173,15 +120,14 @@ def register_error_handlers(app):
 
 def register_shell_context(app):
     """Register shell context objects"""
-    try:
-        # Import models for shell context
-        from backend.models import (
-            User, Student, Faculty, Course, CourseOffering, 
-            Enrollment, Prediction
-        )
-        
-        def shell_context():
-            """Shell context objects"""
+    def shell_context():
+        """Shell context objects"""
+        # Import models inside the function to avoid circular imports
+        try:
+            from backend.models import (
+                User, Student, Faculty, Course, CourseOffering, 
+                Enrollment, Prediction
+            )
             return {
                 'db': db,
                 'User': User,
@@ -192,14 +138,15 @@ def register_shell_context(app):
                 'Enrollment': Enrollment,
                 'Prediction': Prediction
             }
-        
-        app.shell_context_processor(shell_context)
-        app.logger.info("Shell context registered")
-        
-    except ImportError as e:
-        app.logger.warning(f"Shell context models not available: {str(e)}")
+        except ImportError as e:
+            app.logger.warning(f"Some models not available for shell context: {str(e)}")
+            return {'db': db}
+    
+    app.shell_context_processor(shell_context)
+    app.logger.info("Shell context registered")
 
 def register_commands(app):
     """Register custom commands"""
     # Skip command registration for now
+    app.logger.info("Commands registration skipped")
     pass
