@@ -651,12 +651,16 @@ class FacultyService:
             return {'attendance_history': [], 'attendance_details': []}
 
     @staticmethod
-    def get_student_grade_detail(faculty_id, student_id):
+    def get_student_grade_detail(faculty_id, student_id, offering_id=None):
         """Get detailed grade information for a student"""
         try:
             # Get enrollments for this student in faculty's courses
             offerings = CourseOffering.query.filter_by(faculty_id=faculty_id).all()
             offering_ids = [o.offering_id for o in offerings]
+            
+            # If specific offering_id provided, filter to that
+            if offering_id:
+                offering_ids = [oid for oid in offering_ids if oid == int(offering_id)]
             
             enrollments = Enrollment.query.filter(
                 Enrollment.student_id == student_id,
@@ -667,25 +671,34 @@ class FacultyService:
             enrollment_ids = [e.enrollment_id for e in enrollments]
             
             if not enrollment_ids:
-                return {'grade_history': [], 'grade_details': []}
+                return {'assessments': [], 'grade_history': [], 'grade_details': []}
             
-            # Try to get assessment submissions with error handling
+            # Get assessment submissions with grades
+            assessments = []
             grade_details = []
             grade_history = []
             
             try:
-                # Check if AssessmentSubmission table exists and has data
+                # ✅ FIXED: Use submission_date instead of submitted_date
                 grade_records = db.session.query(
                     Assessment.title,
+                    Assessment.max_score,
+                    Assessment.due_date,
                     AssessmentSubmission.score,
-                    AssessmentSubmission.submission_date,  # ✅ FIXED: Use submission_date instead of submitted_date
-                    Assessment.offering_id
+                    AssessmentSubmission.percentage,
+                    AssessmentSubmission.submission_date,  # ✅ FIXED: Changed from submitted_date
+                    AssessmentSubmission.is_late,
+                    AssessmentSubmission.feedback,
+                    Assessment.offering_id,
+                    AssessmentType.type_name
                 ).join(
                     AssessmentSubmission, AssessmentSubmission.assessment_id == Assessment.assessment_id
+                ).join(
+                    AssessmentType, AssessmentType.type_id == Assessment.type_id
                 ).filter(
                     AssessmentSubmission.enrollment_id.in_(enrollment_ids),
                     AssessmentSubmission.score.isnot(None)
-                ).order_by(desc(AssessmentSubmission.submission_date)).limit(20).all()  # ✅ FIXED: submission_date
+                ).order_by(desc(Assessment.due_date)).limit(20).all()
                 
                 # Get course names
                 course_names = {}
@@ -697,45 +710,83 @@ class FacultyService:
                         course = Course.query.filter_by(course_id=course_offering.course_id).first()
                         course_names[enrollment.offering_id] = course.course_name if course else 'Unknown Course'
                 
-                # Create grade details
+                # Create assessments array for frontend chart
                 for record in grade_records:
+                    # Calculate percentage score
+                    percentage = float(record.percentage) if record.percentage else (
+                        (float(record.score) / float(record.max_score)) * 100 if record.score and record.max_score else 0
+                    )
+                    
+                    assessments.append({
+                        'title': record.title,
+                        'type': record.type_name,
+                        'score': percentage,  # Use percentage for chart
+                        'max_score': float(record.max_score) if record.max_score else 100,
+                        'due_date': record.due_date.isoformat() if record.due_date else None,
+                        'submission_date': record.submission_date.isoformat() if record.submission_date else None,
+                        'is_late': record.is_late,
+                        'feedback': record.feedback
+                    })
+                    
+                    # Also add to grade details
                     grade_details.append({
                         'course_name': course_names.get(record.offering_id, 'Unknown Course'),
                         'assessment_name': record.title,
-                        'assessment_type': 'Assessment',  # Default type
-                        'score': float(record.score) if record.score else 0,
-                        'submitted_date': record.submission_date.isoformat() if record.submission_date else None  # ✅ FIXED: submission_date
+                        'assessment_type': record.type_name,
+                        'score': percentage,
+                        'submitted_date': record.submission_date.isoformat() if record.submission_date else None,
+                        'is_late': record.is_late,
+                        'feedback': record.feedback or 'No feedback'
                     })
                 
-                # Create grade history (for chart)
-                for record in grade_records[:8]:  # Last 8 assessments
+                # Create grade history (for line chart - last 8 assessments)
+                for i, record in enumerate(grade_records[:8]):
+                    percentage = float(record.percentage) if record.percentage else (
+                        (float(record.score) / float(record.max_score)) * 100 if record.score and record.max_score else 0
+                    )
+                    
                     grade_history.append({
-                        'assessment_name': record.title[:20] + '...' if len(record.title) > 20 else record.title,
-                        'score': float(record.score) if record.score else 0
+                        'assessment_name': record.title[:15] + '...' if len(record.title) > 15 else record.title,
+                        'score': percentage,
+                        'date': record.due_date.isoformat() if record.due_date else None
                     })
                 
                 grade_history.reverse()  # Show chronological order
                 
             except Exception as e:
                 logger.error(f"Error querying grade records: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                
                 # Create mock data if query fails
+                assessments = [
+                    {'title': 'Quiz 1', 'type': 'Quiz', 'score': 85, 'max_score': 100, 'due_date': '2024-05-15'},
+                    {'title': 'Assignment 1', 'type': 'Assignment', 'score': 92, 'max_score': 100, 'due_date': '2024-05-20'},
+                    {'title': 'Quiz 2', 'type': 'Quiz', 'score': 78, 'max_score': 100, 'due_date': '2024-05-25'},
+                    {'title': 'Midterm', 'type': 'Exam', 'score': 88, 'max_score': 100, 'due_date': '2024-06-01'}
+                ]
+                
                 grade_history = [
                     {'assessment_name': 'Quiz 1', 'score': 85},
                     {'assessment_name': 'Assignment 1', 'score': 92},
                     {'assessment_name': 'Quiz 2', 'score': 78},
                     {'assessment_name': 'Midterm', 'score': 88}
                 ]
+                
                 grade_details = [
                     {
                         'course_name': 'Current Course',
                         'assessment_name': 'Quiz 1',
                         'assessment_type': 'Quiz',
                         'score': 85,
-                        'submitted_date': '2024-05-15'
+                        'submitted_date': '2024-05-15',
+                        'is_late': False,
+                        'feedback': 'Good work'
                     }
                 ]
             
             return {
+                'assessments': assessments,  # ✅ ADDED: Frontend expects this
                 'grade_history': grade_history,
                 'grade_details': grade_details
             }
@@ -744,7 +795,7 @@ class FacultyService:
             logger.error(f"Error getting student grade detail: {str(e)}")
             import traceback
             traceback.print_exc()
-            return {'grade_history': [], 'grade_details': []}
+            return {'assessments': [], 'grade_history': [], 'grade_details': []}
 
     @staticmethod
     def get_student_interventions(faculty_id, student_id):

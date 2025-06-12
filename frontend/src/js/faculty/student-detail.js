@@ -3,14 +3,18 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize page
     initializePage();
     
-    // Get student ID from URL
+    // Get student ID and offering ID from URL - FIXED PARAMETER NAMES
     const urlParams = new URLSearchParams(window.location.search);
-    const studentId = urlParams.get('id');
+    const studentId = urlParams.get('student_id');  // ✅ Fixed: was 'id'
+    const offeringId = urlParams.get('offering_id'); // ✅ Added missing parameter
     
-    if (studentId) {
-        loadStudentDetail(studentId);
+    console.log('URL Parameters:', { studentId, offeringId }); // Debug log
+    
+    if (studentId && offeringId) {
+        loadStudentDetail(studentId, offeringId);
     } else {
-        showError('Student ID not provided');
+        showError('Student ID or Offering ID not provided');
+        hideLoading(); // ✅ Added: hide loading on error
     }
 });
 
@@ -39,90 +43,187 @@ function initializePage() {
     
     // Initialize action buttons
     initializeActionButtons();
+    
+    // Check authentication - ADDED
+    if (!authApi.isLoggedIn()) {
+        window.location.href = '../login.html';
+        return;
+    }
+    
+    // Check user role - ADDED
+    if (!authApi.hasRole('faculty')) {
+        window.location.href = '../login.html';
+        return;
+    }
+    
+    // Display username - ADDED
+    const user = authApi.getCurrentUser();
+    if (user) {
+        const usernameElement = document.getElementById('username');
+        if (usernameElement) {
+            usernameElement.textContent = user.username;
+        }
+    }
 }
 
 function initializeTabs() {
-    const tabButtons = document.querySelectorAll('.nav-link');
-    const tabPanes = document.querySelectorAll('.tab-pane');
+    const tabButtons = document.querySelectorAll('#attendanceTab, #assessmentsTab, #interventionsTab');
     
     tabButtons.forEach(button => {
         button.addEventListener('click', function(e) {
             e.preventDefault();
             
             // Remove active class from all tabs
-            tabButtons.forEach(btn => btn.classList.remove('active'));
-            tabPanes.forEach(pane => pane.classList.remove('show', 'active'));
+            tabButtons.forEach(btn => {
+                btn.classList.remove('border-blue-500', 'text-blue-600');
+                btn.classList.add('border-transparent', 'text-gray-500');
+            });
+            
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.add('hidden');
+            });
             
             // Add active class to clicked tab
-            this.classList.add('active');
+            this.classList.remove('border-transparent', 'text-gray-500');
+            this.classList.add('border-blue-500', 'text-blue-600');
             
-            // Show corresponding pane
-            const targetId = this.getAttribute('href').substring(1);
-            const targetPane = document.getElementById(targetId);
-            if (targetPane) {
-                targetPane.classList.add('show', 'active');
-                
-                // Load specific tab content
-                handleTabChange(targetId);
+            // Show corresponding content
+            const tabId = this.id.replace('Tab', 'TabContent');
+            const targetContent = document.getElementById(tabId);
+            if (targetContent) {
+                targetContent.classList.remove('hidden');
             }
         });
     });
 }
 
 function initializeActionButtons() {
-    // Send alert button
-    const sendAlertBtn = document.getElementById('sendAlertBtn');
-    if (sendAlertBtn) {
-        sendAlertBtn.addEventListener('click', showSendAlertModal);
+    // Send email button
+    const sendEmailBtn = document.getElementById('sendEmailBtn');
+    if (sendEmailBtn) {
+        sendEmailBtn.addEventListener('click', () => {
+            if (studentData && studentData.email) {
+                window.location.href = `mailto:${studentData.email}`;
+            } else {
+                showError('Student email not available');
+            }
+        });
     }
     
-    // Schedule meeting button
-    const scheduleMeetingBtn = document.getElementById('scheduleMeetingBtn');
-    if (scheduleMeetingBtn) {
-        scheduleMeetingBtn.addEventListener('click', showScheduleMeetingModal);
+    // Intervention button
+    const interventionBtn = document.getElementById('interventionBtn');
+    const addInterventionBtn = document.getElementById('addInterventionBtn');
+    
+    if (interventionBtn) {
+        interventionBtn.addEventListener('click', showAddInterventionModal);
     }
     
-    // Add note button
-    const addNoteBtn = document.getElementById('addNoteBtn');
-    if (addNoteBtn) {
-        addNoteBtn.addEventListener('click', showAddNoteModal);
+    if (addInterventionBtn) {
+        addInterventionBtn.addEventListener('click', showAddInterventionModal);
+    }
+    
+    // Modal buttons
+    const saveInterventionBtn = document.getElementById('saveInterventionBtn');
+    const closeModalBtn = document.getElementById('closeModalBtn');
+    
+    if (saveInterventionBtn) {
+        saveInterventionBtn.addEventListener('click', addIntervention);
+    }
+    
+    if (closeModalBtn) {
+        closeModalBtn.addEventListener('click', hideAddInterventionModal);
+    }
+    
+    // Close modal when clicking outside
+    const interventionModal = document.getElementById('interventionModal');
+    if (interventionModal) {
+        interventionModal.addEventListener('click', function(e) {
+            if (e.target === interventionModal) {
+                hideAddInterventionModal();
+            }
+        });
     }
 }
 
-async function loadStudentDetail(studentId) {
+// ✅ FIXED: Updated function to accept both parameters
+async function loadStudentDetail(studentId, offeringId) {
     try {
         showLoading();
         
-        // Load student data using the API client
-        const response = await apiClient.get(`faculty/students/${studentId}`);
+        console.log(`Loading student ${studentId} for offering ${offeringId}`);
+        
+        // ✅ FIXED: Updated API call to include both parameters
+        const response = await apiClient.get(`faculty/students/${studentId}?offering_id=${offeringId}`);
         
         if (response.status === 'success') {
             studentData = response.data.student;
+            console.log('Student data loaded:', studentData);
+            
             populateStudentInfo(studentData);
-            loadAttendanceData(studentId);
-            loadGradeData(studentId);
-            loadInterventions(studentId);
+            loadAttendanceData(studentId, offeringId);
+            loadGradeData(studentId, offeringId);
+            loadInterventions(studentId, offeringId);
+            
+            // ✅ FIXED: Show main content after loading
+            const mainContent = document.getElementById('mainContent');
+            if (mainContent) {
+                mainContent.classList.remove('hidden');
+            }
         } else {
             throw new Error(response.message || 'Failed to load student data');
         }
         
     } catch (error) {
         console.error('Error loading student detail:', error);
-        showError('Failed to load student information');
+        
+        // ✅ IMPROVED: Better error handling
+        if (error.response && error.response.status === 401) {
+            showError('Session expired. Please log in again.');
+            setTimeout(() => {
+                window.location.href = '../login.html';
+            }, 2000);
+        } else if (error.response && error.response.status === 404) {
+            showError('Student not found or access denied.');
+        } else {
+            showError('Failed to load student information');
+        }
     } finally {
         hideLoading();
     }
 }
 
 function populateStudentInfo(student) {
+    console.log('Populating student info:', student);
+    
+    // ✅ FIXED: Handle both data structures
+    let firstName, lastName, fullName;
+    
+    if (student.first_name && student.last_name) {
+        // If we have separate first_name and last_name
+        firstName = student.first_name;
+        lastName = student.last_name;
+        fullName = `${firstName} ${lastName}`;
+    } else if (student.name) {
+        // If we have a single name field, split it
+        const nameParts = student.name.split(' ');
+        firstName = nameParts[0] || '';
+        lastName = nameParts.slice(1).join(' ') || '';
+        fullName = student.name;
+    } else {
+        // Fallback
+        firstName = 'Unknown';
+        lastName = 'Student';
+        fullName = 'Unknown Student';
+    }
     
     // Update page title
-    document.title = `${student.name} - Student Detail`;
+    document.title = `${fullName} - Student Detail`;
     
     // Update breadcrumb
     const breadcrumbName = document.getElementById('breadcrumbName');
     if (breadcrumbName) {
-        breadcrumbName.textContent = student.name;
+        breadcrumbName.textContent = fullName;
     }
     
     // Student header info
@@ -131,16 +232,19 @@ function populateStudentInfo(student) {
     const courseInfo = document.getElementById('courseInfo');
     const studentInitials = document.getElementById('studentInitials');
     
-    if (studentName) studentName.textContent = student.name;
+    // ✅ FIXED: Use the processed names
+    if (studentName) studentName.textContent = fullName;
     if (studentId) studentId.textContent = `ID: ${student.student_id}`;
-    if (courseInfo) courseInfo.textContent = `${student.course_code} - ${student.course_name}`;
+    if (courseInfo) courseInfo.textContent = student.course_name || 'Course Information';
     if (studentInitials) {
-        studentInitials.textContent = getInitials(student.name);
+        // ✅ FIXED: Safe initial generation
+        const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+        studentInitials.textContent = initials;
     }
     
     // Risk badge
     const riskContainer = document.getElementById('riskBadgeContainer');
-    if (riskContainer) {
+    if (riskContainer && student.risk_level) {
         const riskColor = getRiskColor(student.risk_level);
         riskContainer.innerHTML = `
             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-${riskColor}-100 text-${riskColor}-800">
@@ -155,10 +259,10 @@ function populateStudentInfo(student) {
     const predictedGrade = document.getElementById('predictedGrade');
     const riskLevel = document.getElementById('riskLevel');
     
-    if (currentGPA) currentGPA.textContent = student.overall_gpa || 'N/A';
+    if (currentGPA) currentGPA.textContent = student.overall_gpa || student.gpa || 'N/A';
     if (attendanceRate) attendanceRate.textContent = `${student.attendance_rate || 0}%`;
     if (predictedGrade) predictedGrade.textContent = student.predicted_grade || student.current_grade || 'N/A';
-    if (riskLevel) riskLevel.textContent = capitalizeFirst(student.risk_level);
+    if (riskLevel) riskLevel.textContent = capitalizeFirst(student.risk_level || 'Unknown');
 }
 
 function getInitials(name) {
@@ -171,71 +275,20 @@ function capitalizeFirst(str) {
     return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-function populateCurrentCourses(courses) {
-    const container = document.getElementById('currentCourses');
-    if (!container) return;
-    
-    if (courses.length === 0) {
-        container.innerHTML = '<p class="text-muted">No current enrollments</p>';
-        return;
-    }
-    
-    const coursesHtml = courses.map(course => `
-        <div class="card mb-2">
-            <div class="card-body p-3">
-                <div class="d-flex justify-content-between align-items-start">
-                    <div>
-                        <h6 class="card-title mb-1">${course.course_name}</h6>
-                        <p class="card-text small text-muted mb-1">${course.course_code}</p>
-                        <p class="card-text small mb-0">
-                            Attendance: <span class="fw-bold ${course.attendance_rate < 70 ? 'text-danger' : 'text-success'}">${course.attendance_rate}%</span>
-                        </p>
-                    </div>
-                    <div class="text-end">
-                        <span class="badge bg-${getGradeColor(course.current_grade)} mb-1">${course.current_grade || 'N/A'}</span>
-                        <br>
-                        <small class="text-muted">${course.credits} credits</small>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `).join('');
-    
-    container.innerHTML = coursesHtml;
-}
-
-function populateRecentAlerts(alerts) {
-    const container = document.getElementById('recentAlerts');
-    if (!container) return;
-    
-    if (alerts.length === 0) {
-        container.innerHTML = '<p class="text-muted">No recent alerts</p>';
-        return;
-    }
-    
-    const alertsHtml = alerts.map(alert => `
-        <div class="alert alert-${getSeverityColor(alert.severity)} alert-dismissible">
-            <div class="d-flex justify-content-between align-items-start">
-                <div>
-                    <h6 class="alert-heading mb-1">${alert.title}</h6>
-                    <p class="mb-1">${alert.message}</p>
-                    <small class="text-muted">${formatDate(alert.created_at)}</small>
-                </div>
-                <span class="badge bg-${getSeverityColor(alert.severity)}">${alert.severity}</span>
-            </div>
-        </div>
-    `).join('');
-    
-    container.innerHTML = alertsHtml;
-}
-
-async function loadAttendanceData(studentId) {
+// ✅ FIXED: Updated to include offeringId parameter
+async function loadAttendanceData(studentId, offeringId) {
     try {
-        const response = await apiClient.get(`faculty/students/${studentId}/attendance`);
+        const response = await apiClient.get(`faculty/students/${studentId}/attendance?offering_id=${offeringId}`);
+        
+        // ✅ DEBUG: Log the actual response
+        console.log('Attendance API Response:', response);
         
         if (response.status === 'success') {
-            createAttendanceChart(response.data.attendance_history);
-            populateAttendanceTable(response.data.attendance_details);
+            console.log('Attendance data:', response.data);
+            createAttendanceChart(response.data.attendance_history || []);
+            populateAttendanceTable(response.data.attendance_records || response.data.records || []);
+        } else {
+            console.warn('Attendance API returned non-success status:', response.status);
         }
         
     } catch (error) {
@@ -247,30 +300,46 @@ async function loadAttendanceData(studentId) {
     }
 }
 
-async function loadGradeData(studentId) {
+// ✅ FIXED: Updated to include offeringId parameter
+async function loadGradeData(studentId, offeringId) {
     try {
-        const response = await apiClient.get(`faculty/students/${studentId}/grades`);
+        const response = await apiClient.get(`faculty/students/${studentId}/grades?offering_id=${offeringId}`);
+        
+        // ✅ DEBUG: Log the actual response
+        console.log('Grades API Response:', response);
         
         if (response.status === 'success') {
-            createGradeChart(response.data.grade_history);
-            populateGradeTable(response.data.grade_details);
+            console.log('Grade data:', response.data);
+            console.log('Assessments array:', response.data.assessments);
+            
+            createGradeChart(response.data.assessments || []);
+            populateAssessmentsList(response.data.assessments || []);
+        } else {
+            console.warn('Grades API returned non-success status:', response.status);
         }
         
     } catch (error) {
         console.error('Error loading grade data:', error);
-        const chartElement = document.getElementById('gradeChart');
+        const chartElement = document.getElementById('gradesChart');
         if (chartElement) {
             chartElement.innerHTML = '<p class="text-gray-500 text-center">Failed to load grade data</p>';
         }
     }
 }
 
-async function loadInterventions(studentId) {
+// ✅ FIXED: Updated to include offeringId parameter
+async function loadInterventions(studentId, offeringId) {
     try {
-        const response = await apiClient.get(`faculty/students/${studentId}/interventions`);
+        const response = await apiClient.get(`faculty/students/${studentId}/interventions?offering_id=${offeringId}`);
+        
+        // ✅ DEBUG: Log the actual response
+        console.log('Interventions API Response:', response);
         
         if (response.status === 'success') {
-            populateInterventions(response.data.interventions);
+            console.log('Interventions data:', response.data);
+            populateInterventions(response.data.interventions || []);
+        } else {
+            console.warn('Interventions API returned non-success status:', response.status);
         }
         
     } catch (error) {
@@ -289,6 +358,11 @@ function createAttendanceChart(attendanceHistory) {
     // Destroy existing chart
     if (attendanceChart) {
         attendanceChart.destroy();
+    }
+    
+    if (!attendanceHistory || attendanceHistory.length === 0) {
+        ctx.innerHTML = '<p class="text-gray-500 text-center">No attendance data available</p>';
+        return;
     }
     
     const labels = attendanceHistory.map(item => item.date);
@@ -335,8 +409,8 @@ function createAttendanceChart(attendanceHistory) {
     });
 }
 
-function createGradeChart(gradeHistory) {
-    const ctx = document.getElementById('gradeChart');
+function createGradeChart(assessments) {
+    const ctx = document.getElementById('gradesChart');
     if (!ctx) return;
     
     // Destroy existing chart
@@ -344,8 +418,13 @@ function createGradeChart(gradeHistory) {
         gradeChart.destroy();
     }
     
-    const labels = gradeHistory.map(item => item.assessment_name);
-    const data = gradeHistory.map(item => item.score);
+    if (!assessments || assessments.length === 0) {
+        ctx.innerHTML = '<p class="text-gray-500 text-center">No assessment data available</p>';
+        return;
+    }
+    
+    const labels = assessments.map(item => item.title || item.assessment_name);
+    const data = assessments.map(item => item.score || item.percentage);
     
     gradeChart = new Chart(ctx, {
         type: 'bar',
@@ -396,46 +475,51 @@ function createGradeChart(gradeHistory) {
     });
 }
 
-function populateAttendanceTable(attendanceDetails) {
-    const tbody = document.querySelector('#attendanceTable tbody');
+function populateAttendanceTable(attendanceRecords) {
+    const tbody = document.getElementById('attendanceTableBody');
     if (!tbody) return;
     
-    if (attendanceDetails.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No attendance records found</td></tr>';
+    if (!attendanceRecords || attendanceRecords.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-gray-500 py-4">No attendance records found</td></tr>';
         return;
     }
     
-    tbody.innerHTML = attendanceDetails.map(record => `
-        <tr>
-            <td>${formatDate(record.date)}</td>
-            <td>${record.course_name}</td>
-            <td>
-                <span class="badge bg-${getAttendanceColor(record.status)}">${record.status}</span>
+    tbody.innerHTML = attendanceRecords.map(record => `
+        <tr class="border-b">
+            <td class="py-2">${formatDate(record.date)}</td>
+            <td class="py-2">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-${getAttendanceColor(record.status)}-100 text-${getAttendanceColor(record.status)}-800">
+                    ${record.status}
+                </span>
             </td>
-            <td>${record.notes || '-'}</td>
+            <td class="py-2">${record.check_in_time || '-'}</td>
+            <td class="py-2">${record.notes || '-'}</td>
         </tr>
     `).join('');
 }
 
-function populateGradeTable(gradeDetails) {
-    const tbody = document.querySelector('#gradeTable tbody');
-    if (!tbody) return;
+function populateAssessmentsList(assessments) {
+    const container = document.getElementById('assessmentsList');
+    if (!container) return;
     
-    if (gradeDetails.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No grade records found</td></tr>';
+    if (!assessments || assessments.length === 0) {
+        container.innerHTML = '<p class="text-gray-500">No assessments found</p>';
         return;
     }
     
-    tbody.innerHTML = gradeDetails.map(grade => `
-        <tr>
-            <td>${grade.course_name}</td>
-            <td>${grade.assessment_name}</td>
-            <td>${grade.assessment_type}</td>
-            <td>
-                <span class="badge bg-${getGradeColor(grade.score)}">${grade.score}%</span>
-            </td>
-            <td>${formatDate(grade.submitted_date)}</td>
-        </tr>
+    container.innerHTML = assessments.map(assessment => `
+        <div class="border rounded-lg p-4">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h4 class="font-medium">${assessment.title}</h4>
+                    <p class="text-sm text-gray-500">${assessment.type}</p>
+                </div>
+                <div class="text-right">
+                    <span class="text-lg font-semibold">${assessment.score || 'N/A'}%</span>
+                    <p class="text-sm text-gray-500">${formatDate(assessment.due_date)}</p>
+                </div>
+            </div>
+        </div>
     `).join('');
 }
 
@@ -443,242 +527,101 @@ function populateInterventions(interventions) {
     const container = document.getElementById('interventionsList');
     if (!container) return;
     
-    if (interventions.length === 0) {
-        container.innerHTML = '<p class="text-muted">No interventions recorded</p>';
+    if (!interventions || interventions.length === 0) {
+        container.innerHTML = '<p class="text-gray-500">No interventions recorded</p>';
         return;
     }
     
-    const interventionsHtml = interventions.map(intervention => `
-        <div class="card mb-3">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start mb-2">
-                    <h6 class="card-title mb-0">${intervention.title}</h6>
-                    <span class="badge bg-${getInterventionColor(intervention.type)}">${intervention.type}</span>
-                </div>
-                <p class="card-text">${intervention.description}</p>
-                <div class="row">
-                    <div class="col-sm-6">
-                        <small class="text-muted">
-                            <strong>Date:</strong> ${formatDate(intervention.date)}
-                        </small>
-                    </div>
-                    <div class="col-sm-6">
-                        <small class="text-muted">
-                            <strong>Follow-up:</strong> ${intervention.follow_up_date ? formatDate(intervention.follow_up_date) : 'None scheduled'}
-                        </small>
-                    </div>
-                </div>
-                ${intervention.outcome ? `
-                    <div class="mt-2">
-                        <small class="text-muted">
-                            <strong>Outcome:</strong> ${intervention.outcome}
-                        </small>
-                    </div>
-                ` : ''}
+    container.innerHTML = interventions.map(intervention => `
+        <div class="border rounded-lg p-4">
+            <div class="flex justify-between items-start mb-2">
+                <h4 class="font-medium">${intervention.type}</h4>
+                <span class="text-sm text-gray-500">${formatDate(intervention.created_at)}</span>
             </div>
+            <p class="text-gray-700">${intervention.notes}</p>
         </div>
     `).join('');
-    
-    container.innerHTML = interventionsHtml;
-}
-
-function handleTabChange(tabId) {
-    // Load specific content when tab changes
-    switch(tabId) {
-        case 'overview':
-            // Overview is already loaded
-            break;
-        case 'attendance':
-            // Attendance data is already loaded
-            break;
-        case 'grades':
-            // Grade data is already loaded
-            break;
-        case 'interventions':
-            // Intervention data is already loaded
-            break;
-    }
 }
 
 // Modal functions
-function showSendAlertModal() {
-    const modal = new bootstrap.Modal(document.getElementById('sendAlertModal'));
-    modal.show();
-}
-
-function showScheduleMeetingModal() {
-    const modal = new bootstrap.Modal(document.getElementById('scheduleMeetingModal'));
-    modal.show();
-}
-
-function showAddNoteModal() {
-    const modal = new bootstrap.Modal(document.getElementById('addNoteModal'));
-    modal.show();
-}
-
-// Action handlers
-async function sendAlert() {
-    const form = document.getElementById('alertForm');
-    const formData = new FormData(form);
-    
-    try {
-        showButtonLoading('sendAlertSubmit');
-        
-        const response = await fetch(`/api/faculty/students/${studentData.student_id}/alert`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${getToken()}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                type: formData.get('alertType'),
-                message: formData.get('alertMessage'),
-                priority: formData.get('alertPriority')
-            })
-        });
-        
-        const data = await response.json();
-        
-        if (data.status === 'success') {
-            showSuccess('Alert sent successfully');
-            bootstrap.Modal.getInstance(document.getElementById('sendAlertModal')).hide();
-            form.reset();
-            // Reload alerts
-            loadStudentDetail(studentData.student_id);
-        } else {
-            throw new Error(data.message);
-        }
-        
-    } catch (error) {
-        console.error('Error sending alert:', error);
-        showError('Failed to send alert');
-    } finally {
-        hideButtonLoading('sendAlertSubmit');
+function showAddInterventionModal() {
+    const modal = document.getElementById('interventionModal');
+    if (modal) {
+        modal.classList.remove('hidden');
     }
 }
 
-async function scheduleMeeting() {
-    const form = document.getElementById('meetingForm');
-    const formData = new FormData(form);
-    
-    try {
-        showButtonLoading('scheduleMeetingSubmit');
-        
-        const response = await fetch(`/api/faculty/students/${studentData.student_id}/meeting`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${getToken()}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                title: formData.get('meetingTitle'),
-                date: formData.get('meetingDate'),
-                time: formData.get('meetingTime'),
-                notes: formData.get('meetingNotes')
-            })
-        });
-        
-        const data = await response.json();
-        
-        if (data.status === 'success') {
-            showSuccess('Meeting scheduled successfully');
-            bootstrap.Modal.getInstance(document.getElementById('scheduleMeetingModal')).hide();
-            form.reset();
-        } else {
-            throw new Error(data.message);
-        }
-        
-    } catch (error) {
-        console.error('Error scheduling meeting:', error);
-        showError('Failed to schedule meeting');
-    } finally {
-        hideButtonLoading('scheduleMeetingSubmit');
+function hideAddInterventionModal() {
+    const modal = document.getElementById('interventionModal');
+    if (modal) {
+        modal.classList.add('hidden');
     }
+    
+    // Clear form
+    const typeSelect = document.getElementById('interventionType');
+    const notesTextarea = document.getElementById('interventionNotes');
+    if (typeSelect) typeSelect.value = '';
+    if (notesTextarea) notesTextarea.value = '';
 }
 
-async function addNote() {
-    const form = document.getElementById('noteForm');
-    const formData = new FormData(form);
+async function addIntervention() {
+    const typeSelect = document.getElementById('interventionType');
+    const notesTextarea = document.getElementById('interventionNotes');
+    
+    if (!typeSelect || !notesTextarea) return;
+    
+    const type = typeSelect.value;
+    const notes = notesTextarea.value.trim();
+    
+    if (!type || !notes) {
+        showError('Please fill in all fields');
+        return;
+    }
     
     try {
-        showButtonLoading('addNoteSubmit');
+        const urlParams = new URLSearchParams(window.location.search);
+        const studentId = urlParams.get('student_id');
+        const offeringId = urlParams.get('offering_id');
         
-        const response = await fetch(`/api/faculty/students/${studentData.student_id}/note`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${getToken()}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                title: formData.get('noteTitle'),
-                content: formData.get('noteContent'),
-                category: formData.get('noteCategory')
-            })
+        const response = await apiClient.post(`faculty/interventions`, {
+            student_id: studentId,
+            offering_id: offeringId,
+            type: type,
+            notes: notes
         });
         
-        const data = await response.json();
-        
-        if (data.status === 'success') {
-            showSuccess('Note added successfully');
-            bootstrap.Modal.getInstance(document.getElementById('addNoteModal')).hide();
-            form.reset();
+        if (response.status === 'success') {
+            showSuccess('Intervention added successfully');
+            hideAddInterventionModal();
             // Reload interventions
-            loadInterventions(studentData.student_id);
+            loadInterventions(studentId, offeringId);
         } else {
-            throw new Error(data.message);
+            throw new Error(response.message);
         }
         
     } catch (error) {
-        console.error('Error adding note:', error);
-        showError('Failed to add note');
-    } finally {
-        hideButtonLoading('addNoteSubmit');
+        console.error('Error adding intervention:', error);
+        showError('Failed to add intervention');
     }
 }
 
 // Utility functions
 function getRiskColor(riskLevel) {
     switch(riskLevel?.toLowerCase()) {
-        case 'high': return 'danger';
-        case 'medium': return 'warning';
-        case 'low': return 'success';
-        default: return 'secondary';
-    }
-}
-
-function getGradeColor(grade) {
-    if (grade >= 90) return 'success';
-    if (grade >= 80) return 'info';
-    if (grade >= 70) return 'warning';
-    return 'danger';
-}
-
-function getSeverityColor(severity) {
-    switch(severity?.toLowerCase()) {
-        case 'critical': return 'danger';
-        case 'warning': return 'warning';
-        case 'info': return 'info';
-        default: return 'secondary';
+        case 'high': return 'red';
+        case 'medium': return 'yellow';
+        case 'low': return 'green';
+        default: return 'gray';
     }
 }
 
 function getAttendanceColor(status) {
     switch(status?.toLowerCase()) {
-        case 'present': return 'success';
-        case 'late': return 'warning';
-        case 'absent': return 'danger';
-        case 'excused': return 'info';
-        default: return 'secondary';
-    }
-}
-
-function getInterventionColor(type) {
-    switch(type?.toLowerCase()) {
-        case 'meeting': return 'primary';
-        case 'alert': return 'warning';
-        case 'counseling': return 'info';
-        case 'academic_support': return 'success';
-        default: return 'secondary';
+        case 'present': return 'green';
+        case 'late': return 'yellow';
+        case 'absent': return 'red';
+        case 'excused': return 'blue';
+        default: return 'gray';
     }
 }
 
@@ -692,78 +635,44 @@ function formatDate(dateString) {
     });
 }
 
-function getToken() {
-    return localStorage.getItem('accessToken');
-}
-
 function showLoading() {
     const loadingDiv = document.getElementById('loadingIndicator');
     if (loadingDiv) {
-        loadingDiv.style.display = 'block';
+        loadingDiv.classList.remove('hidden');
+    }
+    
+    const mainContent = document.getElementById('mainContent');
+    if (mainContent) {
+        mainContent.classList.add('hidden');
     }
 }
 
 function hideLoading() {
     const loadingDiv = document.getElementById('loadingIndicator');
     if (loadingDiv) {
-        loadingDiv.style.display = 'none';
-    }
-}
-
-function showButtonLoading(buttonId) {
-    const button = document.getElementById(buttonId);
-    if (button) {
-        button.disabled = true;
-        button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Processing...';
-    }
-}
-
-function hideButtonLoading(buttonId) {
-    const button = document.getElementById(buttonId);
-    if (button) {
-        button.disabled = false;
-        // Reset button text based on its original purpose
-        if (buttonId === 'sendAlertSubmit') {
-            button.innerHTML = 'Send Alert';
-        } else if (buttonId === 'scheduleMeetingSubmit') {
-            button.innerHTML = 'Schedule Meeting';
-        } else if (buttonId === 'addNoteSubmit') {
-            button.innerHTML = 'Add Note';
-        }
+        loadingDiv.classList.add('hidden');
     }
 }
 
 function showSuccess(message) {
-    // Create and show success toast/alert
     const alert = document.createElement('div');
-    alert.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 end-0 m-3';
-    alert.style.zIndex = '9999';
-    alert.innerHTML = `
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    `;
+    alert.className = 'fixed top-4 right-4 bg-green-500 text-white p-4 rounded-md shadow-lg z-50';
+    alert.textContent = message;
     document.body.appendChild(alert);
     
-    // Auto remove after 5 seconds
     setTimeout(() => {
         if (alert.parentNode) {
             alert.parentNode.removeChild(alert);
         }
-    }, 5000);
+    }, 3000);
 }
 
 function showError(message) {
-    // Create and show error toast/alert
     const alert = document.createElement('div');
-    alert.className = 'alert alert-danger alert-dismissible fade show position-fixed top-0 end-0 m-3';
-    alert.style.zIndex = '9999';
-    alert.innerHTML = `
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    `;
+    alert.className = 'fixed top-4 right-4 bg-red-500 text-white p-4 rounded-md shadow-lg z-50';
+    alert.textContent = message;
     document.body.appendChild(alert);
     
-    // Auto remove after 5 seconds
     setTimeout(() => {
         if (alert.parentNode) {
             alert.parentNode.removeChild(alert);
@@ -772,6 +681,5 @@ function showError(message) {
 }
 
 function logout() {
-    localStorage.removeItem('accessToken');
-    window.location.href = '/auth/login.html';
+    authApi.logout();
 }

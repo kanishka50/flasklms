@@ -280,8 +280,8 @@ function createStudentRow(student) {
                 </span>
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                <a href="student-detail.html?id=${student.student_id}" 
-                   class="text-blue-600 hover:text-blue-900 mr-3">View</a>
+                <a href="student-detail.html?student_id=${student.student_id}&offering_id=${student.offering_id}" 
+                    class="text-blue-600 hover:text-blue-900 mr-3">View</a>
                 <button onclick="sendAlert('${student.student_id}')" 
                         class="text-yellow-600 hover:text-yellow-900 mr-3">Alert</button>
                 <button onclick="scheduleIntervention('${student.student_id}')" 
