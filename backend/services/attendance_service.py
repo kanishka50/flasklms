@@ -1,55 +1,168 @@
-from backend.models import (
-    Attendance, Enrollment, Student, CourseOffering, Course
-)
+# backend/services/attendance_service.py
+from backend.models.attendance import Attendance
+from backend.models.academic import Enrollment, Student, CourseOffering, Course
 from backend.extensions import db
+from sqlalchemy import func, desc, and_, case
 from datetime import datetime, date, timedelta
-from sqlalchemy import func, case, desc, and_
 import logging
 
 logger = logging.getLogger(__name__)
 
 class AttendanceService:
-    """Service class for attendance-related operations"""
+    
+    @staticmethod
+    def mark_attendance(enrollment_id, attendance_date, status, check_in_time=None, notes=None, recorded_by=None):
+        """Mark or update attendance for a student"""
+        try:
+            # Validate enrollment exists
+            enrollment = Enrollment.query.get(enrollment_id)
+            if not enrollment:
+                logger.error(f"Enrollment {enrollment_id} not found")
+                return None
+            
+            # Validate status
+            valid_statuses = ['present', 'absent', 'late', 'excused']
+            if status not in valid_statuses:
+                logger.error(f"Invalid status: {status}")
+                return None
+            
+            # Check if attendance already exists for this date
+            existing_attendance = Attendance.query.filter_by(
+                enrollment_id=enrollment_id,
+                attendance_date=attendance_date
+            ).first()
+            
+            if existing_attendance:
+                # Update existing record
+                existing_attendance.status = status
+                existing_attendance.check_in_time = check_in_time
+                existing_attendance.notes = notes
+                existing_attendance.recorded_by = recorded_by
+                existing_attendance.updated_at = datetime.utcnow()
+                attendance_record = existing_attendance
+                logger.info(f"Updated attendance record {existing_attendance.attendance_id}")
+            else:
+                # Create new record
+                attendance_record = Attendance(
+                    enrollment_id=enrollment_id,
+                    attendance_date=attendance_date,
+                    status=status,
+                    check_in_time=check_in_time,
+                    notes=notes,
+                    recorded_by=recorded_by
+                )
+                db.session.add(attendance_record)
+                logger.info(f"Created new attendance record for enrollment {enrollment_id}")
+            
+            db.session.commit()
+            return attendance_record
+            
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error marking attendance: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return None
+    
+    @staticmethod
+    def bulk_mark_attendance(attendance_data, recorded_by=None):
+        """Mark attendance for multiple students with better error handling"""
+        results = []
+        successful_count = 0
+        
+        try:
+            for data in attendance_data:
+                try:
+                    # Validate required fields
+                    if not all(key in data for key in ['enrollment_id', 'attendance_date', 'status']):
+                        results.append({
+                            'enrollment_id': data.get('enrollment_id', 'unknown'),
+                            'success': False,
+                            'error': 'Missing required fields'
+                        })
+                        continue
+                    
+                    # Mark individual attendance
+                    result = AttendanceService.mark_attendance(
+                        enrollment_id=data['enrollment_id'],
+                        attendance_date=data['attendance_date'],
+                        status=data['status'],
+                        check_in_time=data.get('check_in_time'),
+                        notes=data.get('notes'),
+                        recorded_by=recorded_by
+                    )
+                    
+                    if result:
+                        results.append({
+                            'enrollment_id': data['enrollment_id'],
+                            'success': True,
+                            'attendance_id': result.attendance_id,
+                            'action': 'updated' if result.updated_at != result.created_at else 'created'
+                        })
+                        successful_count += 1
+                    else:
+                        results.append({
+                            'enrollment_id': data['enrollment_id'],
+                            'success': False,
+                            'error': 'Failed to save attendance record'
+                        })
+                        
+                except Exception as e:
+                    logger.error(f"Error processing attendance for enrollment {data.get('enrollment_id')}: {str(e)}")
+                    results.append({
+                        'enrollment_id': data.get('enrollment_id', 'unknown'),
+                        'success': False,
+                        'error': str(e)
+                    })
+            
+            logger.info(f"Bulk attendance completed: {successful_count}/{len(attendance_data)} successful")
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error in bulk attendance marking: {str(e)}")
+            return []
     
     @staticmethod
     def get_course_roster(offering_id, attendance_date=None):
-        """Get roster of students for a course with attendance status"""
+        """Get course roster with attendance status for a specific date"""
         try:
             if attendance_date is None:
                 attendance_date = date.today()
             
-            # Get all enrolled students for this course offering
-            students = db.session.query(
-                Student.student_id,
+            # Base query for enrolled students
+            roster_query = db.session.query(
+                Enrollment.enrollment_id,
+                Enrollment.student_id,
                 Student.first_name,
                 Student.last_name,
-                Enrollment.enrollment_id,
-                Attendance.status.label('attendance_status'),
+                Student.email,
                 Attendance.attendance_id,
+                Attendance.status.label('attendance_status'),
                 Attendance.check_in_time,
                 Attendance.notes
             ).select_from(Enrollment).join(
-                Student, Student.student_id == Enrollment.student_id
+                Student, Enrollment.student_id == Student.student_id
             ).outerjoin(
-                Attendance, 
-                and_(
+                Attendance, and_(
                     Attendance.enrollment_id == Enrollment.enrollment_id,
                     Attendance.attendance_date == attendance_date
                 )
             ).filter(
-                Enrollment.offering_id == offering_id,
-                Enrollment.enrollment_status == 'enrolled'
-            ).order_by(Student.last_name, Student.first_name).all()
+                Enrollment.course_offering_id == offering_id,
+                Enrollment.status == 'enrolled'
+            ).order_by(Student.last_name, Student.first_name)
             
-            # Format results
+            roster_data = roster_query.all()
+            
             roster = []
-            for student in students:
+            for student in roster_data:
                 roster.append({
-                    'student_id': student.student_id,
                     'enrollment_id': student.enrollment_id,
-                    'name': f"{student.first_name} {student.last_name}",
+                    'student_id': student.student_id,
+                    'student_name': f"{student.first_name} {student.last_name}",
                     'first_name': student.first_name,
                     'last_name': student.last_name,
+                    'email': student.email,
                     'attendance_id': student.attendance_id,
                     'status': student.attendance_status or 'not_marked',
                     'check_in_time': student.check_in_time.strftime('%H:%M') if student.check_in_time else None,
@@ -65,122 +178,46 @@ class AttendanceService:
             return []
     
     @staticmethod
-    def mark_attendance(enrollment_id, attendance_date, status, check_in_time=None, notes=None, recorded_by=None):
-        """Mark or update attendance for a student"""
-        try:
-            # Check if attendance already exists
-            existing_attendance = Attendance.query.filter_by(
-                enrollment_id=enrollment_id,
-                attendance_date=attendance_date
-            ).first()
-            
-            if existing_attendance:
-                # Update existing record
-                existing_attendance.status = status
-                existing_attendance.check_in_time = check_in_time
-                existing_attendance.notes = notes
-                existing_attendance.recorded_by = recorded_by
-                attendance_record = existing_attendance
-            else:
-                # Create new record
-                attendance_record = Attendance(
-                    enrollment_id=enrollment_id,
-                    attendance_date=attendance_date,
-                    status=status,
-                    check_in_time=check_in_time,
-                    notes=notes,
-                    recorded_by=recorded_by
-                )
-                db.session.add(attendance_record)
-            
-            db.session.commit()
-            return attendance_record
-            
-        except Exception as e:
-            db.session.rollback()
-            logger.error(f"Error marking attendance: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return None
-    
-    @staticmethod
-    def bulk_mark_attendance(attendance_data, recorded_by=None):
-        """Mark attendance for multiple students"""
-        try:
-            results = []
-            
-            for data in attendance_data:
-                result = AttendanceService.mark_attendance(
-                    enrollment_id=data['enrollment_id'],
-                    attendance_date=data['attendance_date'],
-                    status=data['status'],
-                    check_in_time=data.get('check_in_time'),
-                    notes=data.get('notes'),
-                    recorded_by=recorded_by
-                )
-                
-                if result:
-                    results.append({
-                        'enrollment_id': data['enrollment_id'],
-                        'success': True,
-                        'attendance_id': result.attendance_id
-                    })
-                else:
-                    results.append({
-                        'enrollment_id': data['enrollment_id'],
-                        'success': False,
-                        'error': 'Failed to save attendance'
-                    })
-            
-            return results
-            
-        except Exception as e:
-            logger.error(f"Error in bulk attendance marking: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return []
-    
-    @staticmethod
     def get_attendance_summary(offering_id, start_date=None, end_date=None):
         """Get attendance summary for a course offering"""
         try:
-            # Default date range (last 30 days)
-            if not start_date:
-                start_date = date.today() - timedelta(days=30)
+            # Set default date range if not provided
             if not end_date:
                 end_date = date.today()
+            if not start_date:
+                start_date = end_date - timedelta(days=30)  # Last 30 days
             
-            # Get attendance records
-            attendance_summary = db.session.query(
+            # Get summary data
+            summary_query = db.session.query(
                 Student.student_id,
                 Student.first_name,
                 Student.last_name,
-                func.count(Attendance.attendance_id).label('total_records'),
-                func.sum(case([(Attendance.status.in_(['present', 'late']), 1)], else_=0)).label('present_count'),
+                func.count(Attendance.attendance_id).label('total_classes'),
+                func.sum(case([(Attendance.status == 'present', 1)], else_=0)).label('present_count'),
                 func.sum(case([(Attendance.status == 'absent', 1)], else_=0)).label('absent_count'),
                 func.sum(case([(Attendance.status == 'late', 1)], else_=0)).label('late_count'),
                 func.sum(case([(Attendance.status == 'excused', 1)], else_=0)).label('excused_count')
             ).select_from(Enrollment).join(
-                Student, Student.student_id == Enrollment.student_id
-            ).outerjoin(
+                Student, Enrollment.student_id == Student.student_id
+            ).join(
                 Attendance, Attendance.enrollment_id == Enrollment.enrollment_id
             ).filter(
-                Enrollment.offering_id == offering_id,
-                Enrollment.enrollment_status == 'enrolled'
+                Enrollment.course_offering_id == offering_id,
+                Attendance.attendance_date >= start_date,
+                Attendance.attendance_date <= end_date
             ).group_by(
                 Student.student_id, Student.first_name, Student.last_name
             ).all()
             
-            # Format results
             summary = []
-            for record in attendance_summary:
-                total = record.total_records or 0
+            for record in summary_query:
+                total = record.total_classes or 0
                 present = record.present_count or 0
                 attendance_rate = (present / total * 100) if total > 0 else 0
                 
                 summary.append({
                     'student_id': record.student_id,
-                    'name': f"{record.first_name} {record.last_name}",
+                    'student_name': f"{record.first_name} {record.last_name}",
                     'total_classes': total,
                     'present_count': present,
                     'absent_count': record.absent_count or 0,
@@ -198,24 +235,104 @@ class AttendanceService:
             return []
     
     @staticmethod
-    def get_course_attendance_dates(offering_id, limit=30):
-        """Get list of dates when attendance was taken for a course"""
+    def get_student_attendance(student_id, course_offering_id=None, start_date=None, end_date=None):
+        """Get attendance records for a specific student"""
         try:
-            dates = db.session.query(
-                Attendance.attendance_date
+            query = db.session.query(
+                Attendance.attendance_date,
+                Attendance.status,
+                Attendance.check_in_time,
+                Attendance.notes,
+                Course.course_code,
+                Course.course_name,
+                CourseOffering.section
+            ).select_from(Attendance).join(
+                Enrollment, Attendance.enrollment_id == Enrollment.enrollment_id
             ).join(
-                Enrollment, Enrollment.enrollment_id == Attendance.enrollment_id
+                CourseOffering, Enrollment.course_offering_id == CourseOffering.offering_id
+            ).join(
+                Course, CourseOffering.course_id == Course.course_id
             ).filter(
-                Enrollment.offering_id == offering_id
-            ).distinct().order_by(
-                desc(Attendance.attendance_date)
-            ).limit(limit).all()
+                Enrollment.student_id == student_id
+            )
             
-            return [d.attendance_date for d in dates]
+            # Apply filters
+            if course_offering_id:
+                query = query.filter(Enrollment.course_offering_id == course_offering_id)
+            
+            if start_date:
+                query = query.filter(Attendance.attendance_date >= start_date)
+            
+            if end_date:
+                query = query.filter(Attendance.attendance_date <= end_date)
+            
+            # Order by date descending
+            query = query.order_by(desc(Attendance.attendance_date))
+            
+            attendance_records = query.all()
+            
+            records = []
+            for record in attendance_records:
+                records.append({
+                    'date': record.attendance_date.isoformat(),
+                    'status': record.status,
+                    'check_in_time': record.check_in_time.strftime('%H:%M') if record.check_in_time else None,
+                    'notes': record.notes,
+                    'course_code': record.course_code,
+                    'course_name': record.course_name,
+                    'section': record.section
+                })
+            
+            return records
             
         except Exception as e:
-            logger.error(f"Error getting attendance dates: {str(e)}")
+            logger.error(f"Error getting student attendance: {str(e)}")
             return []
+    
+    @staticmethod
+    def get_student_attendance_stats(student_id, course_offering_id=None):
+        """Get attendance statistics for a student"""
+        try:
+            query = db.session.query(
+                func.count(Attendance.attendance_id).label('total_classes'),
+                func.sum(case([(Attendance.status == 'present', 1)], else_=0)).label('present_count'),
+                func.sum(case([(Attendance.status == 'absent', 1)], else_=0)).label('absent_count'),
+                func.sum(case([(Attendance.status == 'late', 1)], else_=0)).label('late_count'),
+                func.sum(case([(Attendance.status == 'excused', 1)], else_=0)).label('excused_count')
+            ).select_from(Attendance).join(
+                Enrollment, Attendance.enrollment_id == Enrollment.enrollment_id
+            ).filter(
+                Enrollment.student_id == student_id
+            )
+            
+            if course_offering_id:
+                query = query.filter(Enrollment.course_offering_id == course_offering_id)
+            
+            result = query.first()
+            
+            total = result.total_classes or 0
+            present = result.present_count or 0
+            attendance_rate = (present / total * 100) if total > 0 else 0
+            
+            return {
+                'total_classes': total,
+                'present_count': present,
+                'absent_count': result.absent_count or 0,
+                'late_count': result.late_count or 0,
+                'excused_count': result.excused_count or 0,
+                'attendance_rate': round(attendance_rate, 2)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting student attendance stats: {str(e)}")
+            return {
+                'total_classes': 0,
+                'present_count': 0,
+                'absent_count': 0,
+                'late_count': 0,
+                'excused_count': 0,
+                'attendance_rate': 0
+            }
     
     @staticmethod
     def delete_attendance(attendance_id):
@@ -225,6 +342,7 @@ class AttendanceService:
             if attendance:
                 db.session.delete(attendance)
                 db.session.commit()
+                logger.info(f"Deleted attendance record {attendance_id}")
                 return True
             return False
             

@@ -1,10 +1,11 @@
+# backend/api/student/routes.py - CLEANED VERSION (Remove attendance routes)
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from backend.services.student_service import student_service
 from backend.services.assessment_service import assessment_service
 from backend.services.auth_service import get_user_by_id
 from backend.middleware.auth_middleware import student_required
-from backend.models import Course, CourseOffering, Enrollment, Faculty, AcademicTerm, Prediction, Assessment, Attendance, AssessmentSubmission
+from backend.models import Course, CourseOffering, Enrollment, Faculty, AcademicTerm, Prediction, Assessment, AssessmentSubmission
 from sqlalchemy import func, desc
 from datetime import datetime
 import logging
@@ -102,43 +103,7 @@ def get_courses():
             'message': 'Failed to load courses'
         }), 500
 
-@student_bp.route('/attendance', methods=['GET'])
-@jwt_required()
-@student_required
-def get_attendance():
-    """Get attendance data for the student"""
-    try:
-        # Get current user
-        user_id = get_jwt_identity()
-        user = get_user_by_id(user_id)
-        
-        if not user or not user.student:
-            return jsonify({
-                'status': 'error',
-                'message': 'Student profile not found'
-            }), 404
-        
-        student_id = user.student.student_id
-        
-        # Get course_id from query params (optional)
-        course_id = request.args.get('course_id')
-        
-        # Get attendance summary
-        attendance = student_service.get_attendance_summary(student_id, course_id)
-        
-        return jsonify({
-            'status': 'success',
-            'data': {
-                'attendance': attendance
-            }
-        })
-        
-    except Exception as e:
-        logger.error(f"Error getting attendance: {str(e)}")
-        return jsonify({
-            'status': 'error',
-            'message': 'Failed to load attendance data'
-        }), 500
+# REMOVED ATTENDANCE ROUTE - Now handled by attendance_routes.py
 
 @student_bp.route('/assessments', methods=['GET'])
 @jwt_required()
@@ -212,10 +177,7 @@ def get_predictions():
             'status': 'error',
             'message': 'Failed to load predictions'
         }), 500
-    
 
-
-    
 @student_bp.route('/assessments/<int:offering_id>', methods=['GET'])
 @jwt_required()
 @student_required

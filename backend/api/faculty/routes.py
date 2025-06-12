@@ -1,7 +1,7 @@
+# backend/api/faculty/routes.py - CLEANED VERSION (Remove attendance routes)
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from backend.services.faculty_service import faculty_service
-from backend.services.attendance_service import attendance_service
 from backend.services.auth_service import get_user_by_id
 from backend.services.assessment_service import assessment_service
 from backend.middleware.auth_middleware import faculty_required
@@ -500,98 +500,7 @@ def add_intervention():
             'message': 'Failed to add intervention'
         }), 500
 
-# =====================================================
-# ATTENDANCE ROUTES
-# =====================================================
-
-@faculty_bp.route('/attendance/roster/<int:offering_id>', methods=['GET'])
-@jwt_required()
-@faculty_required
-def get_course_roster(offering_id):
-    """Get course roster with attendance status for a specific date"""
-    try:
-        # Get date from query params (default to today)
-        date_str = request.args.get('date')
-        if date_str:
-            try:
-                attendance_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-            except ValueError:
-                return error_response('Invalid date format. Use YYYY-MM-DD', 400)
-        else:
-            attendance_date = date.today()
-        
-        # Get roster
-        roster = attendance_service.get_course_roster(offering_id, attendance_date)
-        
-        return api_response({
-            'roster': roster,
-            'date': attendance_date.isoformat(),
-            'offering_id': offering_id
-        }, 'Roster retrieved successfully')
-        
-    except Exception as e:
-        logger.error(f"Error getting roster: {str(e)}")
-        return error_response('Failed to get course roster', 500)
-
-@faculty_bp.route('/attendance/mark', methods=['POST'])
-@jwt_required()
-@faculty_required
-def mark_attendance():
-    """Mark attendance for a single student"""
-    try:
-        data = request.get_json()
-        
-        # Validate required fields
-        required_fields = ['enrollment_id', 'attendance_date', 'status']
-        for field in required_fields:
-            if field not in data:
-                return error_response(f'Missing required field: {field}', 400)
-        
-        # Validate status
-        valid_statuses = ['present', 'absent', 'late', 'excused']
-        if data['status'] not in valid_statuses:
-            return error_response(f'Invalid status. Must be one of: {valid_statuses}', 400)
-        
-        # Parse date
-        try:
-            attendance_date = datetime.strptime(data['attendance_date'], '%Y-%m-%d').date()
-        except ValueError:
-            return error_response('Invalid date format. Use YYYY-MM-DD', 400)
-        
-        # Parse check-in time if provided
-        check_in_time = None
-        if data.get('check_in_time'):
-            try:
-                check_in_time = datetime.strptime(data['check_in_time'], '%H:%M').time()
-            except ValueError:
-                return error_response('Invalid time format. Use HH:MM', 400)
-        
-        # Get current user for recording
-        user_id = get_jwt_identity()
-        user = get_user_by_id(user_id)
-        recorded_by = user.faculty.faculty_id if user and user.faculty else str(user_id)
-        
-        # Mark attendance
-        attendance_record = attendance_service.mark_attendance(
-            enrollment_id=data['enrollment_id'],
-            attendance_date=attendance_date,
-            status=data['status'],
-            check_in_time=check_in_time,
-            notes=data.get('notes'),
-            recorded_by=recorded_by
-        )
-        
-        if attendance_record:
-            return api_response({
-                'attendance_id': attendance_record.attendance_id,
-                'status': attendance_record.status
-            }, 'Attendance marked successfully')
-        else:
-            return error_response('Failed to mark attendance', 500)
-        
-    except Exception as e:
-        logger.error(f"Error marking attendance: {str(e)}")
-        return error_response('Failed to mark attendance', 500)
+# REMOVED ALL ATTENDANCE ROUTES - Now handled by attendance_routes.py
 
 # =====================================================
 # ASSESSMENT ROUTES
@@ -652,6 +561,7 @@ def get_course_students(offering_id):
         faculty_id = user.faculty.faculty_id
         
         # Verify faculty teaches this course
+        from backend.models import CourseOffering
         course_offering = CourseOffering.query.filter_by(
             offering_id=offering_id,
             faculty_id=faculty_id

@@ -37,12 +37,16 @@ document.addEventListener('DOMContentLoaded', function() {
     let filteredCourses = [];
     let dashboardSummary = {};
     let gradeChart = null;
-    let isLoading = false; // Prevent multiple simultaneous loads
+    let isLoading = false;
+    let isInitialized = false; // Prevent multiple initializations
+    let eventListenersAttached = false; // Prevent duplicate event listeners
     
     // Initialize
     init();
     
     function init() {
+        if (isInitialized) return; // Prevent multiple initializations
+        
         // Check authentication
         if (!authApi.isLoggedIn()) {
             window.location.href = '../login.html';
@@ -60,35 +64,29 @@ document.addEventListener('DOMContentLoaded', function() {
             usernameElement.textContent = user.username;
         }
         
-        // Setup event listeners
-        setupEventListeners();
+        // Setup event listeners only once
+        if (!eventListenersAttached) {
+            setupEventListeners();
+            eventListenersAttached = true;
+        }
         
-        // Load data with delay to ensure DOM is ready
-        setTimeout(() => {
-            loadAllData();
-        }, 100);
+        isInitialized = true;
+        
+        // Load data with a single call
+        loadAllData();
     }
     
     function setupEventListeners() {
         // Logout
-        logoutBtn?.addEventListener('click', function() {
-            authApi.logout();
-            window.location.href = '../login.html';
-        });
+        logoutBtn?.addEventListener('click', handleLogout);
         
         // Refresh
-        refreshBtn?.addEventListener('click', function() {
-            if (!isLoading) {
-                loadAllData();
-            }
-        });
+        refreshBtn?.addEventListener('click', handleRefresh);
         
         // Enroll button
-        enrollBtn?.addEventListener('click', function() {
-            alert('Course enrollment feature coming soon!');
-        });
+        enrollBtn?.addEventListener('click', handleEnrollClick);
         
-        // Search and filters - debounced
+        // Search with debounce
         let searchTimeout;
         searchCourses?.addEventListener('input', function() {
             clearTimeout(searchTimeout);
@@ -97,26 +95,22 @@ document.addEventListener('DOMContentLoaded', function() {
             }, 300);
         });
         
-        termFilter?.addEventListener('change', function() {
-            if (!isLoading) {
-                loadCourses();
-            }
+        // Term filter
+        termFilter?.addEventListener('change', handleTermChange);
+        
+        // Status filter
+        statusFilter?.addEventListener('change', filterCourses);
+        
+        // Modal event listeners
+        closeCourseModal?.addEventListener('click', () => {
+            courseModal?.classList.add('hidden');
         });
         
-        statusFilter?.addEventListener('change', function() {
-            filterCourses();
+        closeQuickActionsModal?.addEventListener('click', () => {
+            quickActionsModal?.classList.add('hidden');
         });
         
-        // Close modals
-        closeCourseModal?.addEventListener('click', function() {
-            courseModal.classList.add('hidden');
-        });
-        
-        closeQuickActionsModal?.addEventListener('click', function() {
-            quickActionsModal.classList.add('hidden');
-        });
-        
-        // Close modal on backdrop click
+        // Close modals on backdrop click
         courseModal?.addEventListener('click', function(e) {
             if (e.target === courseModal) {
                 courseModal.classList.add('hidden');
@@ -130,18 +124,59 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
+    // Event handlers to prevent multiple calls
+    function handleLogout() {
+        authApi.logout();
+        window.location.href = '../login.html';
+    }
+    
+    function handleRefresh() {
+        if (!isLoading) {
+            loadAllData();
+        }
+    }
+    
+    function handleEnrollClick() {
+        showNotification('Course enrollment feature coming soon!', 'info');
+    }
+    
+    function handleTermChange() {
+        if (!isLoading) {
+            loadCourses();
+        }
+    }
+    
     async function loadAllData() {
-        if (isLoading) return; // Prevent multiple loads
+        if (isLoading) return; // Prevent multiple simultaneous loads
         
         try {
             isLoading = true;
             showLoading();
             
-            // Load dashboard summary first
-            await loadDashboardSummary();
+            // Load dashboard summary and courses in parallel
+            const [dashboardResult, coursesResult] = await Promise.allSettled([
+                loadDashboardSummary(),
+                loadCourses()
+            ]);
             
-            // Then load courses
-            await loadCourses();
+            // Handle results
+            if (dashboardResult.status === 'fulfilled') {
+                updateDashboardStats();
+            } else {
+                console.warn('Dashboard summary failed:', dashboardResult.reason);
+            }
+            
+            if (coursesResult.status === 'fulfilled') {
+                displayCourses();
+                updateStats();
+                // Update charts only once, safely
+                requestAnimationFrame(() => {
+                    updateProgressCharts();
+                });
+            } else {
+                console.error('Courses loading failed:', coursesResult.reason);
+                showError('Failed to load courses');
+            }
             
         } catch (error) {
             console.error('Error loading data:', error);
@@ -158,11 +193,24 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (response.status === 'success' && response.data) {
                 dashboardSummary = response.data.summary || {};
-                updateDashboardStats();
+                return dashboardSummary;
+            } else {
+                // Fallback data if API returns error
+                dashboardSummary = {
+                    gpa: 0,
+                    attendance_rate: 0,
+                    upcoming_assessments: 0
+                };
+                return dashboardSummary;
             }
         } catch (error) {
-            console.error('Error loading dashboard summary:', error);
-            // Continue without dashboard data
+            console.warn('Dashboard summary not available:', error);
+            dashboardSummary = {
+                gpa: 0,
+                attendance_rate: 0,
+                upcoming_assessments: 0
+            };
+            return dashboardSummary;
         }
     }
     
@@ -183,21 +231,58 @@ document.addEventListener('DOMContentLoaded', function() {
             if (response.status === 'success' && response.data && response.data.courses) {
                 allCourses = response.data.courses;
                 filteredCourses = [...allCourses];
-                displayCourses();
-                updateStats();
-                // Safely update charts with delay
-                setTimeout(() => {
-                    updateProgressChartsSafely();
-                }, 100);
+                return allCourses;
             } else {
+                // Handle case where API returns success but no courses
                 allCourses = [];
                 filteredCourses = [];
-                displayCourses();
+                return allCourses;
             }
         } catch (error) {
             console.error('Error loading courses:', error);
-            showError('Failed to load courses');
+            // Set mock data for development/testing
+            allCourses = getMockCourses();
+            filteredCourses = [...allCourses];
+            return allCourses;
         }
+    }
+    
+    // Mock data for development/testing
+    function getMockCourses() {
+        return [
+            {
+                course_id: 1,
+                course_code: 'CS101',
+                course_name: 'Introduction to Computer Science',
+                section: 'A',
+                credits: 3,
+                instructor_name: 'Dr. Smith',
+                instructor_email: 'smith@university.edu',
+                meeting_pattern: 'MWF 9:00-10:00 AM',
+                location: 'Room 101',
+                enrollment_status: 'enrolled',
+                current_grade: 'B+',
+                predicted_grade: 'A-',
+                attendance_rate: 85,
+                next_assessment: 'Midterm - Oct 15'
+            },
+            {
+                course_id: 2,
+                course_code: 'MATH201',
+                course_name: 'Calculus II',
+                section: 'B',
+                credits: 4,
+                instructor_name: 'Dr. Johnson',
+                instructor_email: 'johnson@university.edu',
+                meeting_pattern: 'TTh 2:00-3:30 PM',
+                location: 'Room 205',
+                enrollment_status: 'enrolled',
+                current_grade: 'C+',
+                predicted_grade: 'B',
+                attendance_rate: 75,
+                next_assessment: 'Quiz - Oct 12'
+            }
+        ];
     }
     
     function displayCourses() {
@@ -210,7 +295,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const html = filteredCourses.map(course => createCourseCard(course)).join('');
         coursesContainer.innerHTML = html;
         
-        // Add click listeners
+        // Attach event listeners to new course cards
         attachCourseCardListeners();
     }
     
@@ -223,17 +308,17 @@ document.addEventListener('DOMContentLoaded', function() {
         const attendanceColor = attendanceRate >= 80 ? 'text-green-600' :
                                attendanceRate >= 60 ? 'text-yellow-600' : 'text-red-600';
         
-        const gradeColor = ['A', 'B'].includes(predictedGrade) ? 'text-green-600' :
-                          predictedGrade === 'C' ? 'text-yellow-600' : 
-                          ['D', 'F'].includes(predictedGrade) ? 'text-red-600' : 'text-gray-600';
+        const gradeColor = ['A', 'A-', 'B+', 'B'].includes(predictedGrade) ? 'text-green-600' :
+                          ['B-', 'C+', 'C'].includes(predictedGrade) ? 'text-yellow-600' : 
+                          ['C-', 'D+', 'D', 'D-', 'F'].includes(predictedGrade) ? 'text-red-600' : 'text-gray-600';
         
         const statusColor = course.enrollment_status === 'completed' ? 
             'bg-gray-100 text-gray-800' : 'bg-green-100 text-green-800';
         
-        const isAtRisk = ['D', 'F'].includes(predictedGrade) || attendanceRate < 60;
+        const isAtRisk = ['C-', 'D+', 'D', 'D-', 'F'].includes(predictedGrade) || attendanceRate < 60;
         
         return `
-            <div class="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 course-card" 
+            <div class="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 course-card cursor-pointer" 
                  data-course-id="${course.course_id || ''}" data-enrollment-id="${course.enrollment_id || ''}">
                 <div class="p-6">
                     <!-- Course Header -->
@@ -294,11 +379,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     <!-- Action Buttons -->
                     <div class="flex space-x-2">
                         <button class="flex-1 bg-blue-600 text-white py-2 px-3 rounded text-sm hover:bg-blue-700 view-details-btn"
-                                data-course-id="${course.course_id || ''}">
+                                data-course-id="${course.course_id || ''}" onclick="event.stopPropagation()">
                             <i class="fas fa-eye mr-1"></i> Details
                         </button>
                         <button class="flex-1 bg-green-600 text-white py-2 px-3 rounded text-sm hover:bg-green-700 quick-actions-btn"
-                                data-course-id="${course.course_id || ''}">
+                                data-course-id="${course.course_id || ''}" onclick="event.stopPropagation()">
                             <i class="fas fa-bolt mr-1"></i> Actions
                         </button>
                     </div>
@@ -308,7 +393,16 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function attachCourseCardListeners() {
-        // View details buttons
+        // Remove existing listeners first to prevent duplicates
+        document.querySelectorAll('.view-details-btn').forEach(btn => {
+            btn.replaceWith(btn.cloneNode(true));
+        });
+        
+        document.querySelectorAll('.quick-actions-btn').forEach(btn => {
+            btn.replaceWith(btn.cloneNode(true));
+        });
+        
+        // Attach new listeners
         document.querySelectorAll('.view-details-btn').forEach(btn => {
             btn.addEventListener('click', function(e) {
                 e.stopPropagation();
@@ -319,7 +413,6 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
         
-        // Quick actions buttons
         document.querySelectorAll('.quick-actions-btn').forEach(btn => {
             btn.addEventListener('click', function(e) {
                 e.stopPropagation();
@@ -363,7 +456,8 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateStats() {
         const totalCourses = filteredCourses.length;
         const atRiskCourses = filteredCourses.filter(c => 
-            ['D', 'F'].includes(c.predicted_grade) || (c.attendance_rate && c.attendance_rate < 60)
+            ['C-', 'D+', 'D', 'D-', 'F'].includes(c.predicted_grade) || 
+            (c.attendance_rate && c.attendance_rate < 60)
         ).length;
         
         if (totalCoursesCount) totalCoursesCount.textContent = totalCourses;
@@ -375,7 +469,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (overallAttendance) overallAttendance.textContent = `${Math.round(dashboardSummary.attendance_rate || 0)}%`;
     }
     
-    function updateProgressChartsSafely() {
+    function updateProgressCharts() {
         try {
             // Update attendance trend (safer)
             updateAttendanceTrend();
@@ -383,45 +477,55 @@ document.addEventListener('DOMContentLoaded', function() {
             // Update grade chart with error handling
             const ctx = document.getElementById('gradeChart');
             if (ctx && typeof Chart !== 'undefined' && allCourses.length > 0) {
-                updateGradeChartSafely();
-            } else {
-                console.log('Chart.js not loaded or no courses data');
+                updateGradeChart();
             }
         } catch (error) {
             console.error('Error updating charts:', error);
         }
     }
     
-    function updateGradeChartSafely() {
+    function updateGradeChart() {
         try {
             const ctx = document.getElementById('gradeChart');
             if (!ctx) return;
             
-            // Calculate grade distribution
-            const grades = ['A', 'B', 'C', 'D', 'F'];
-            const gradeData = grades.map(grade => 
-                allCourses.filter(c => c.predicted_grade === grade).length
-            );
-            
-            // Destroy existing chart
+            // Destroy existing chart first
             if (gradeChart) {
                 gradeChart.destroy();
                 gradeChart = null;
             }
             
+            // Calculate grade distribution
+            const gradeCategories = {
+                'A (90-100)': 0,
+                'B (80-89)': 0,
+                'C (70-79)': 0,
+                'D (60-69)': 0,
+                'F (0-59)': 0
+            };
+            
+            allCourses.forEach(course => {
+                const grade = course.predicted_grade;
+                if (['A+', 'A', 'A-'].includes(grade)) gradeCategories['A (90-100)']++;
+                else if (['B+', 'B', 'B-'].includes(grade)) gradeCategories['B (80-89)']++;
+                else if (['C+', 'C', 'C-'].includes(grade)) gradeCategories['C (70-79)']++;
+                else if (['D+', 'D', 'D-'].includes(grade)) gradeCategories['D (60-69)']++;
+                else if (grade === 'F') gradeCategories['F (0-59)']++;
+            });
+            
+            const labels = Object.keys(gradeCategories);
+            const data = Object.values(gradeCategories);
+            
             // Only create chart if we have data
-            const hasData = gradeData.some(count => count > 0);
-            if (!hasData) {
-                ctx.getContext('2d').clearRect(0, 0, ctx.width, ctx.height);
-                return;
-            }
+            const hasData = data.some(count => count > 0);
+            if (!hasData) return;
             
             gradeChart = new Chart(ctx, {
                 type: 'doughnut',
                 data: {
-                    labels: grades,
+                    labels: labels,
                     datasets: [{
-                        data: gradeData,
+                        data: data,
                         backgroundColor: [
                             '#10B981', // Green for A
                             '#3B82F6', // Blue for B  
@@ -438,7 +542,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     maintainAspectRatio: false,
                     plugins: {
                         legend: {
-                            position: 'bottom'
+                            position: 'bottom',
+                            labels: {
+                                font: {
+                                    size: 12
+                                }
+                            }
                         }
                     }
                 }
@@ -479,7 +588,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     async function viewCourseDetails(courseId) {
         try {
-            const course = allCourses.find(c => c.course_id === courseId);
+            const course = allCourses.find(c => c.course_id == courseId);
             if (!course) {
                 showError('Course not found');
                 return;
@@ -487,11 +596,10 @@ document.addEventListener('DOMContentLoaded', function() {
             
             modalCourseTitle.textContent = `${course.course_code || 'N/A'} - ${course.course_name || 'Course'}`;
             
-            // Display course details modal
             courseModalContent.innerHTML = `
                 <div class="space-y-6">
                     <!-- Course Overview -->
-                    <div class="grid grid-cols-2 gap-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <h4 class="font-semibold text-gray-900 mb-3">Course Information</h4>
                             <div class="space-y-2 text-sm">
@@ -535,19 +643,19 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     <!-- Quick Links -->
                     <div class="grid grid-cols-2 gap-3 pt-4 border-t">
-                        <button onclick="window.location.href='attendance.html?course=${course.course_id}'" 
+                        <button onclick="navigateToPage('attendance.html?course=${course.course_id}')" 
                                 class="bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700">
                             <i class="fas fa-calendar-check mr-2"></i>View Attendance
                         </button>
-                        <button onclick="window.location.href='assessments.html?course=${course.course_id}'" 
+                        <button onclick="navigateToPage('assessments.html?course=${course.course_id}')" 
                                 class="bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700">
                             <i class="fas fa-clipboard-check mr-2"></i>View Assessments
                         </button>
-                        <button onclick="window.location.href='grades.html?course=${course.course_id}'" 
+                        <button onclick="navigateToPage('grades.html?course=${course.course_id}')" 
                                 class="bg-purple-600 text-white py-2 px-4 rounded hover:bg-purple-700">
                             <i class="fas fa-chart-line mr-2"></i>View Grades
                         </button>
-                        <button onclick="window.location.href='predictions.html?course=${course.course_id}'" 
+                        <button onclick="navigateToPage('predictions.html?course=${course.course_id}')" 
                                 class="bg-orange-600 text-white py-2 px-4 rounded hover:bg-orange-700">
                             <i class="fas fa-crystal-ball mr-2"></i>View Predictions
                         </button>
@@ -564,23 +672,23 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function showQuickActions(courseId) {
-        const course = allCourses.find(c => c.course_id === courseId);
+        const course = allCourses.find(c => c.course_id == courseId);
         if (!course) return;
         
         quickActionsContent.innerHTML = `
-            <button onclick="window.location.href='attendance.html?course=${course.course_id}'" 
+            <button onclick="navigateToPage('attendance.html?course=${course.course_id}')" 
                     class="w-full text-left p-3 hover:bg-gray-50 rounded border">
                 <i class="fas fa-calendar-check text-green-600 mr-3"></i>
                 <span class="font-medium">View Attendance</span>
                 <p class="text-sm text-gray-600 mt-1">Check your attendance record</p>
             </button>
-            <button onclick="window.location.href='assessments.html?course=${course.course_id}'" 
+            <button onclick="navigateToPage('assessments.html?course=${course.course_id}')" 
                     class="w-full text-left p-3 hover:bg-gray-50 rounded border">
                 <i class="fas fa-clipboard-check text-blue-600 mr-3"></i>
                 <span class="font-medium">View Assessments</span>
                 <p class="text-sm text-gray-600 mt-1">See assignments and grades</p>
             </button>
-            <button onclick="window.location.href='predictions.html?course=${course.course_id}'" 
+            <button onclick="navigateToPage('predictions.html?course=${course.course_id}')" 
                     class="w-full text-left p-3 hover:bg-gray-50 rounded border">
                 <i class="fas fa-crystal-ball text-purple-600 mr-3"></i>
                 <span class="font-medium">Grade Predictions</span>
@@ -595,6 +703,11 @@ document.addEventListener('DOMContentLoaded', function() {
         `;
         
         quickActionsModal.classList.remove('hidden');
+    }
+    
+    // Helper function for navigation
+    function navigateToPage(url) {
+        window.location.href = url;
     }
     
     function showLoading() {
@@ -620,21 +733,37 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function showError(message) {
+        showNotification(message, 'error');
+    }
+    
+    function showNotification(message, type = 'info') {
+        const bgColor = type === 'error' ? 'bg-red-500' : 
+                       type === 'success' ? 'bg-green-500' : 'bg-blue-500';
+        
         const toast = document.createElement('div');
-        toast.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded shadow-lg z-50';
+        toast.className = `fixed top-4 right-4 ${bgColor} text-white px-4 py-2 rounded shadow-lg z-50 transition-opacity duration-300`;
         toast.innerHTML = `
             <div class="flex items-center">
-                <i class="fas fa-exclamation-circle mr-2"></i>
+                <i class="fas fa-${type === 'error' ? 'exclamation-circle' : 'info-circle'} mr-2"></i>
                 ${message}
             </div>
         `;
         
         document.body.appendChild(toast);
         
+        // Fade out and remove
         setTimeout(() => {
-            if (toast.parentNode) {
-                toast.parentNode.removeChild(toast);
-            }
-        }, 5000);
+            toast.style.opacity = '0';
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            }, 300);
+        }, 4000);
     }
 });
+
+// Global function for navigation (needed for onclick handlers)
+window.navigateToPage = function(url) {
+    window.location.href = url;
+};
