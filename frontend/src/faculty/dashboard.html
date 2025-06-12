@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Faculty Dashboard - University Grade Prediction System</title>
+
+    <!-- Compiled Tailwind CSS -->
+    <link href="../css/tailwind.css" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link href="../assets/vendor/fontawesome/css/all.min.css" rel="stylesheet">
+    
+    <!-- Custom CSS -->
+    <link href="../css/main.css" rel="stylesheet">
+
+    <!-- Updated CSP to allow API calls -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com; connect-src 'self' http://localhost:5000;">
+</head>
+<body class="bg-gray-100">
+    <div class="min-h-screen">
+        <!-- Navigation -->
+        <nav class="bg-gray-800 text-white shadow-lg">
+            <div class="container mx-auto px-4">
+                <div class="flex justify-between items-center py-4">
+                    <a class="text-xl font-bold" href="#">Grade Prediction System</a>
+                    <div class="hidden md:block">
+                        <div class="flex space-x-4">
+                            <a class="px-3 py-2 rounded-md bg-gray-900" href="dashboard.html">Dashboard</a>
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="courses.html">My Courses</a>
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="students.html">Students</a>
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="attendance.html">Attendance</a>
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="assessments.html">Assessments</a>
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="analytics.html">Analytics</a>
+                        </div>
+                    </div>
+                    <div>
+                        <span id="username" class="mr-4"></span>
+                        <button id="logoutBtn" class="px-3 py-2 rounded-md hover:bg-gray-700">Logout</button>
+                    </div>
+                    <div class="md:hidden">
+                        <button id="menuBtn" class="text-white">
+                            <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+        
+        <div class="container mx-auto px-4 py-6">
+            <!-- Page Header -->
+            <div class="mb-6">
+                <h1 class="text-2xl font-bold mb-2">Faculty Dashboard</h1>
+                <p class="text-gray-600">Welcome back! Here's an overview of your courses and students.</p>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="flex flex-wrap gap-4 mb-6">
+                <a href="assessment-create.html" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                    </svg>
+                    Create Assessment
+                </a>
+                <a href="attendance.html" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    Take Attendance
+                </a>
+                <a href="assessments.html" class="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 flex items-center">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                    </svg>
+                    Manage Assessments
+                </a>
+            </div>
+            
+            <!-- Summary Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <div class="flex items-center">
+                        <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-600">My Courses</p>
+                            <p class="text-2xl font-semibold text-gray-900" id="courseCount">0</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <div class="flex items-center">
+                        <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-600">Total Students</p>
+                            <p class="text-2xl font-semibold text-gray-900" id="studentCount">0</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <div class="flex items-center">
+                        <div class="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-600">At-Risk Students</p>
+                            <p class="text-2xl font-semibold text-gray-900" id="atRiskCount">0</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <div class="flex items-center">
+                        <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-600">Assessments</p>
+                            <p class="text-2xl font-semibold text-gray-900" id="totalAssessments">0</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Main Content Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                <!-- My Courses -->
+                <div class="bg-white rounded-lg shadow-md">
+                    <div class="border-b px-6 py-4">
+                        <div class="flex justify-between items-center">
+                            <h3 class="text-lg font-semibold">My Courses</h3>
+                            <a href="courses.html" class="text-blue-600 hover:text-blue-800 text-sm font-medium">View All</a>
+                        </div>
+                    </div>
+                    <div class="p-6">
+                        <div id="coursesList" class="space-y-4">
+                            <p class="text-gray-500">Loading courses...</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Assessment Management -->
+                <div class="bg-white rounded-lg shadow-md">
+                    <div class="border-b px-6 py-4">
+                        <div class="flex justify-between items-center">
+                            <h3 class="text-lg font-semibold">Assessment Management</h3>
+                            <a href="assessments.html" class="text-blue-600 hover:text-blue-800 text-sm font-medium">Manage All</a>
+                        </div>
+                    </div>
+                    <div class="p-6">
+                        <!-- Assessment Stats Grid -->
+                        <div class="grid grid-cols-2 gap-4 mb-4">
+                            <div class="text-center p-4 bg-blue-50 rounded-lg">
+                                <div class="text-2xl font-bold text-blue-600" id="totalAssessmentsDetail">0</div>
+                                <div class="text-sm text-gray-600">Total Created</div>
+                            </div>
+                            <div class="text-center p-4 bg-green-50 rounded-lg">
+                                <div class="text-2xl font-bold text-green-600" id="gradedSubmissions">0</div>
+                                <div class="text-sm text-gray-600">Graded Items</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Recent Assessments -->
+                        <div id="recentAssessmentsList" class="space-y-3">
+                            <p class="text-gray-500 text-sm">Loading recent assessments...</p>
+                        </div>
+                        
+                        <!-- Quick Actions -->
+                        <div class="mt-4 flex space-x-2">
+                            <a href="assessment-create.html" class="bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700 flex-1 text-center">
+                                Create New
+                            </a>
+                            <a href="assessments.html" class="bg-gray-600 text-white px-3 py-2 rounded text-sm hover:bg-gray-700 flex-1 text-center">
+                                View All
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- At-Risk Students Section -->
+            <div class="bg-white rounded-lg shadow-md">
+                <div class="border-b px-6 py-4">
+                    <div class="flex justify-between items-center">
+                        <h3 class="text-lg font-semibold">At-Risk Students</h3>
+                        <a href="students.html" class="text-blue-600 hover:text-blue-800 text-sm font-medium">View All Students</a>
+                    </div>
+                </div>
+                <div class="p-6">
+                    <div id="atRiskStudentsList" class="space-y-4">
+                        <p class="text-gray-500">Loading at-risk students...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- JavaScript Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.3.3/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.2/dist/axios.min.js"></script>
+    
+    <!-- Custom JavaScript -->
+    <script src="../js/api/client.js"></script>
+    <script src="../js/api/auth.js"></script>
+    <script src="../js/utils/auth-guard.js"></script>
+    <script src="../js/api/mock-data.js"></script>
+    <script src="../js/faculty/dashboard.js"></script>
+</body>
+</html>

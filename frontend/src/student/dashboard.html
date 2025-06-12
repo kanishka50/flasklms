@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Dashboard - University Grade Prediction System</title>
+
+    <!-- Compiled Tailwind CSS -->
+    <link href="../css/tailwind.css" rel="stylesheet">
+    
+    <!-- Custom CSS -->
+    <link href="../css/main.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+    <div class="min-h-screen">
+        <!-- Navigation -->
+        <nav class="bg-gray-800 text-white shadow-lg">
+            <div class="container mx-auto px-4">
+                <div class="flex justify-between items-center py-4">
+                    <a class="text-xl font-bold" href="#">Grade Prediction System</a>
+                    <div class="hidden md:block">
+                        <div class="flex space-x-4">
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="dashboard.html">Dashboard</a>
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="courses.html">My Courses</a>
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="assessments.html">Assessments</a>
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="grades.html">Grades</a>
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="predictions.html">Predictions</a>
+                        </div>
+                    </div>
+                    <div>
+                        <span id="username" class="mr-4"></span>
+                        <button id="logoutBtn" class="px-3 py-2 rounded-md hover:bg-gray-700">Logout</button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+        
+        <div class="container mx-auto px-4 py-6">
+            <h1 class="text-2xl font-bold mb-6">Student Dashboard</h1>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                <div class="bg-white rounded-lg shadow-md p-4 border-l-4 border-blue-500">
+                    <h2 class="font-bold mb-2">Current GPA</h2>
+                    <p class="text-2xl" id="currentGPA">-</p>
+                </div>
+                
+                <div class="bg-white rounded-lg shadow-md p-4 border-l-4 border-green-500">
+                    <h2 class="font-bold mb-2">Attendance Rate</h2>
+                    <p class="text-2xl" id="attendanceRate">-</p>
+                </div>
+                
+                <div class="bg-white rounded-lg shadow-md p-4 border-l-4 border-yellow-500">
+                    <h2 class="font-bold mb-2">Upcoming Assessments</h2>
+                    <p class="text-2xl" id="upcomingAssessments">-</p>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-white rounded-lg shadow-md">
+                    <div class="border-b px-4 py-3">
+                        <h3 class="font-bold">Current Courses</h3>
+                    </div>
+                    <div class="p-4">
+                        <div id="coursesList" class="space-y-4">
+                            <p>Loading courses...</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-lg shadow-md">
+                    <div class="border-b px-4 py-3">
+                        <h3 class="font-bold">Grade Predictions</h3>
+                    </div>
+                    <div class="p-4">
+                        <div id="predictionsList" class="space-y-4">
+                            <p>Loading predictions...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- NEW: Recent Assessments Card -->
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold">Recent Assessments</h3>
+            <a href="assessments.html" class="text-blue-600 hover:text-blue-800 text-sm">View All</a>
+        </div>
+        <div id="recentAssessments" class="space-y-3">
+            <!-- Populated by JavaScript -->
+        </div>
+    </div>
+    
+    <!-- NEW: Grade Summary Card -->
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold">Grade Summary</h3>
+            <a href="grades.html" class="text-blue-600 hover:text-blue-800 text-sm">View Details</a>
+        </div>
+        <div id="gradeSummary">
+            <div class="text-center">
+                <div class="text-3xl font-bold text-blue-600" id="dashboardAverage">-</div>
+                <div class="text-sm text-gray-500">Overall Average</div>
+            </div>
+        </div>
+    </div>
+        </div>
+    </div>
+    
+    <!-- JavaScript Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.2/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.3.3/dist/chart.umd.min.js"></script>
+    
+    <!-- Custom JavaScript -->
+    <script src="../js/api/client.js"></script>
+    <script src="../js/api/auth.js"></script>
+    <script src="../js/utils/auth-guard.js"></script>
+    <script src="../js/student/dashboard.js"></script>
+</body>
+</html>

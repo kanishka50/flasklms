@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assessment Management - Faculty Dashboard</title>
+
+    <!-- Compiled Tailwind CSS -->
+    <link href="../css/tailwind.css" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link href="../assets/vendor/fontawesome/css/all.min.css" rel="stylesheet">
+    
+    <!-- Custom CSS -->
+    <link href="../css/main.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+    <div class="min-h-screen">
+        <!-- Navigation - EXACTLY like your faculty dashboard -->
+        <nav class="bg-gray-800 text-white shadow-lg">
+            <div class="container mx-auto px-4">
+                <div class="flex justify-between items-center py-4">
+                    <a class="text-xl font-bold" href="#">Grade Prediction System</a>
+                    <div class="hidden md:block">
+                        <div class="flex space-x-4">
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="dashboard.html">Dashboard</a>
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="courses.html">My Courses</a>
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="students.html">Students</a>
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="attendance.html">Attendance</a>
+                            <a class="px-3 py-2 rounded-md bg-gray-900" href="assessments.html">Assessments</a>
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="analytics.html">Analytics</a>
+                        </div>
+                    </div>
+                    <div>
+                        <span id="username" class="mr-4"></span>
+                        <button id="logoutBtn" class="px-3 py-2 rounded-md hover:bg-gray-700">Logout</button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+        
+        <div class="container mx-auto px-4 py-6">
+            <!-- Page Header -->
+            <div class="flex justify-between items-center mb-6">
+                <div>
+                    <h1 class="text-2xl font-bold">Assessment Management</h1>
+                    <p class="text-gray-600">Create and manage assessments for your courses</p>
+                </div>
+                <a href="assessment-create.html" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                    </svg>
+                    Create New Assessment
+                </a>
+            </div>
+            
+            <!-- Filters -->
+            <div class="bg-white rounded-lg shadow-md p-4 mb-6">
+                <div class="flex flex-wrap gap-4 items-center">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Filter by Course</label>
+                        <select id="courseFilter" class="px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">All Courses</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Filter by Status</label>
+                        <select id="statusFilter" class="px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">All Status</option>
+                            <option value="published">Published</option>
+                            <option value="draft">Draft</option>
+                        </select>
+                    </div>
+                    <div class="flex items-end">
+                        <button id="refreshBtn" class="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700">
+                            Refresh
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Loading Indicator -->
+            <div id="loadingIndicator" class="text-center py-8">
+                <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <p class="mt-2 text-gray-600">Loading assessments...</p>
+            </div>
+            
+            <!-- Assessments List -->
+            <div id="assessmentsList" class="hidden space-y-4">
+                <!-- Populated by JavaScript -->
+            </div>
+            
+            <!-- No Assessments Message -->
+            <div id="noAssessments" class="hidden text-center py-8">
+                <div class="text-gray-400 text-6xl mb-4">📝</div>
+                <h3 class="text-xl font-medium text-gray-500 mb-2">No Assessments Found</h3>
+                <p class="text-gray-400 mb-4">You haven't created any assessments yet.</p>
+                <a href="assessment-create.html" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+                    Create Your First Assessment
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <!-- JavaScript Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.2/dist/axios.min.js"></script>
+    
+    <!-- Custom JavaScript -->
+    <script src="../js/api/client.js"></script>
+    <script src="../js/api/auth.js"></script>
+    <script src="../js/utils/auth-guard.js"></script>
+    <script src="../js/faculty/assessments.js"></script>
+</body>
+</html>

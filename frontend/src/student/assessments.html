@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Assessments - University Grade Prediction System</title>
+
+    <!-- Compiled Tailwind CSS -->
+    <link href="../css/tailwind.css" rel="stylesheet">
+    
+    <!-- Custom CSS -->
+    <link href="../css/main.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+    <div class="min-h-screen">
+        <!-- Navigation -->
+        <nav class="bg-gray-800 text-white shadow-lg">
+            <div class="container mx-auto px-4">
+                <div class="flex justify-between items-center py-4">
+                    <a class="text-xl font-bold" href="#">Grade Prediction System</a>
+                    <div class="hidden md:block">
+                        <div class="flex space-x-4">
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="dashboard.html">Dashboard</a>
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="courses.html">My Courses</a>
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="assessments.html">Assessments</a>
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="grades.html">Grades</a>
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="predictions.html">Predictions</a>
+                        </div>
+                    </div>
+                    <div>
+                        <span id="username" class="mr-4"></span>
+                        <button id="logoutBtn" class="px-3 py-2 rounded-md hover:bg-gray-700">Logout</button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+        
+        <div class="container mx-auto px-4 py-6">
+            <!-- Page Header -->
+            <div class="mb-6">
+                <h1 class="text-2xl font-bold mb-2">My Assessments</h1>
+                <p class="text-gray-600">Track your assignments, quizzes, and exams across all courses</p>
+            </div>
+            
+            <!-- Filter and Summary -->
+            <div class="bg-white rounded-lg shadow-md mb-6">
+                <div class="p-6">
+                    <div class="flex flex-wrap justify-between items-center mb-4">
+                        <div class="flex space-x-4 mb-4 md:mb-0">
+                            <select id="courseFilter" class="px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                                <option value="">All Courses</option>
+                            </select>
+                            <select id="statusFilter" class="px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                                <option value="">All Status</option>
+                                <option value="pending">Pending</option>
+                                <option value="graded">Graded</option>
+                                <option value="overdue">Overdue</option>
+                            </select>
+                        </div>
+                        <button id="refreshBtn" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+                            Refresh
+                        </button>
+                    </div>
+                    
+                    <!-- Quick Stats -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="text-center p-4 bg-blue-50 rounded-lg">
+                            <div class="text-2xl font-bold text-blue-600" id="totalAssessments">0</div>
+                            <div class="text-sm text-gray-600">Total</div>
+                        </div>
+                        <div class="text-center p-4 bg-green-50 rounded-lg">
+                            <div class="text-2xl font-bold text-green-600" id="gradedAssessments">0</div>
+                            <div class="text-sm text-gray-600">Graded</div>
+                        </div>
+                        <div class="text-center p-4 bg-yellow-50 rounded-lg">
+                            <div class="text-2xl font-bold text-yellow-600" id="pendingAssessments">0</div>
+                            <div class="text-sm text-gray-600">Pending</div>
+                        </div>
+                        <div class="text-center p-4 bg-purple-50 rounded-lg">
+                            <div class="text-2xl font-bold text-purple-600" id="averageGrade">-</div>
+                            <div class="text-sm text-gray-600">Average %</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Loading Indicator -->
+            <div id="loadingIndicator" class="text-center py-8">
+                <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <p class="mt-2 text-gray-600">Loading assessments...</p>
+            </div>
+            
+            <!-- Assessments by Course -->
+            <div id="assessmentsContainer" class="hidden space-y-6">
+                <!-- Course sections will be populated here -->
+            </div>
+            
+            <!-- No Assessments Message -->
+            <div id="noAssessments" class="hidden text-center py-8">
+                <div class="text-gray-400 text-6xl mb-4">📝</div>
+                <h3 class="text-xl font-medium text-gray-500 mb-2">No Assessments Found</h3>
+                <p class="text-gray-400">You don't have any assessments in your courses yet.</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Assessment Detail Modal -->
+    <div id="assessmentModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-11/12 max-w-2xl shadow-lg rounded-md bg-white">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg leading-6 font-medium text-gray-900" id="modalTitle">Assessment Details</h3>
+                <button id="closeModal" class="text-gray-400 hover:text-gray-600">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            <div id="modalContent">
+                <!-- Assessment details will be populated here -->
+            </div>
+        </div>
+    </div>
+    
+    <!-- JavaScript Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.2/dist/axios.min.js"></script>
+    
+    <!-- Custom JavaScript -->
+    <script src="../js/api/client.js"></script>
+    <script src="../js/api/auth.js"></script>
+    <script src="../js/utils/auth-guard.js"></script>
+    <script src="../js/student/assessments.js"></script>
+</body>
+</html>

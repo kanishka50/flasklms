@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Grades - University Grade Prediction System</title>
+
+    <!-- Compiled Tailwind CSS -->
+    <link href="../css/tailwind.css" rel="stylesheet">
+    
+    <!-- Custom CSS -->
+    <link href="../css/main.css" rel="stylesheet">
+    
+    <!-- Chart.js for grade visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="min-h-screen">
+        <!-- Navigation -->
+        <nav class="bg-gray-800 text-white shadow-lg">
+            <div class="container mx-auto px-4">
+                <div class="flex justify-between items-center py-4">
+                    <a class="text-xl font-bold" href="#">Grade Prediction System</a>
+                    <div class="hidden md:block">
+                        <div class="flex space-x-4">
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="dashboard.html">Dashboard</a>
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="courses.html">My Courses</a>
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="assessments.html">Assessments</a>
+                            <a class="px-3 py-2 rounded-md bg-gray-900" href="grades.html">Grades</a>
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="predictions.html">Predictions</a>
+                        </div>
+                    </div>
+                    <div>
+                        <span id="username" class="mr-4"></span>
+                        <button id="logoutBtn" class="px-3 py-2 rounded-md hover:bg-gray-700">Logout</button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+        
+        <div class="container mx-auto px-4 py-6">
+            <!-- Page Header -->
+            <div class="mb-6">
+                <h1 class="text-2xl font-bold mb-2">My Grades</h1>
+                <p class="text-gray-600">Track your academic performance and grade trends</p>
+            </div>
+            
+            <!-- Grade Summary Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <div class="flex items-center">
+                        <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-600">Overall Average</p>
+                            <p class="text-2xl font-semibold text-gray-900" id="overallAverage">-</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <div class="flex items-center">
+                        <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-600">Graded Items</p>
+                            <p class="text-2xl font-semibold text-gray-900" id="gradedCount">0</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <div class="flex items-center">
+                        <div class="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-600">Pending</p>
+                            <p class="text-2xl font-semibold text-gray-900" id="pendingCount">0</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <div class="flex items-center">
+                        <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-600">Total Items</p>
+                            <p class="text-2xl font-semibold text-gray-900" id="totalCount">0</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Charts Row -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                <!-- Grade Distribution Chart -->
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h3 class="text-lg font-semibold mb-4">Grade Distribution</h3>
+                    <div class="h-64">
+                        <canvas id="gradeDistributionChart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- Grade Trend Chart -->
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h3 class="text-lg font-semibold mb-4">Grade Trends</h3>
+                    <div class="h-64">
+                        <canvas id="gradeTrendChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Loading Indicator -->
+            <div id="loadingIndicator" class="text-center py-8">
+                <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <p class="mt-2 text-gray-600">Loading grades...</p>
+            </div>
+            
+            <!-- Grades by Course -->
+            <div id="gradesContainer" class="hidden space-y-6">
+                <!-- Course grade sections will be populated here -->
+            </div>
+            
+            <!-- No Grades Message -->
+            <div id="noGrades" class="hidden text-center py-8">
+                <div class="text-gray-400 text-6xl mb-4">📊</div>
+                <h3 class="text-xl font-medium text-gray-500 mb-2">No Grades Yet</h3>
+                <p class="text-gray-400">Your grades will appear here once your assessments are graded.</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- JavaScript Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.2/dist/axios.min.js"></script>
+    
+    <!-- Custom JavaScript -->
+    <script src="../js/api/client.js"></script>
+    <script src="../js/api/auth.js"></script>
+    <script src="../js/utils/auth-guard.js"></script>
+    <script src="../js/student/grades.js"></script>
+</body>
+</html>
