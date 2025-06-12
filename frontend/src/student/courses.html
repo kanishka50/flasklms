@@ -169,6 +169,11 @@
                         <option value="">Current Term</option>
                         <!-- Populated by JavaScript -->
                     </select>
+                    <!-- NEW: Add/Drop Courses Button -->
+                    <a href="course-enrollment.html" 
+                       class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors duration-200 flex items-center">
+                        <i class="fas fa-plus-circle mr-2"></i>Add/Drop Courses
+                    </a>
                     <button id="refreshBtn" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
                         <i class="fas fa-refresh mr-2"></i>Refresh
                     </button>
@@ -278,9 +283,11 @@
             <i class="fas fa-graduation-cap text-gray-400 text-6xl mb-4"></i>
             <h3 class="text-xl font-medium text-gray-900 mb-2">No Courses Found</h3>
             <p class="text-gray-600 mb-4">You are not enrolled in any courses for this term.</p>
-            <button id="enrollBtn" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
-                Browse Available Courses
-            </button>
+            <!-- UPDATED: Changed button to link -->
+            <a href="course-enrollment.html" 
+               class="inline-block bg-blue-600 text-white px-6 py-3 rounded hover:bg-blue-700 transition-colors duration-200">
+                <i class="fas fa-plus-circle mr-2"></i>Browse Available Courses
+            </a>
         </div>
     </div>
 
@@ -329,6 +336,7 @@
     <!-- Custom JavaScript -->
     <script src="../js/api/client.js"></script>
     <script src="../js/api/auth.js"></script>
+    <script src="../js/api/student.js"></script>
     <script src="../js/utils/auth-guard.js"></script>
     <script src="../js/student/courses.js"></script>
     <script>

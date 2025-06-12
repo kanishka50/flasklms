@@ -5,8 +5,11 @@ from backend.services.student_service import student_service
 from backend.services.assessment_service import assessment_service
 from backend.services.auth_service import get_user_by_id
 from backend.middleware.auth_middleware import student_required
+from backend.services.course_service import course_service
 from backend.models import Course, CourseOffering, Enrollment, Faculty, AcademicTerm, Prediction, Assessment, AssessmentSubmission
 from sqlalchemy import func, desc
+from backend.utils.api import api_response, error_response
+from backend.models import User
 from datetime import datetime
 import logging
 
@@ -433,3 +436,192 @@ def get_course_details(course_id):
             'status': 'error',
             'message': 'Failed to load course details'
         }), 500
+    
+@student_bp.route('/profile', methods=['GET'])
+@jwt_required()
+@student_required
+def get_profile():
+    """Get student profile"""
+    try:
+        # Get current user
+        user_id = get_jwt_identity()
+        user = get_user_by_id(user_id)
+        
+        if not user or not user.student:
+            return error_response('Student profile not found', 404)
+        
+        student = user.student
+        
+        # Build profile response
+        profile_data = {
+            'user': {
+                'user_id': user.user_id,
+                'username': user.username,
+                'email': user.email,
+                'last_login': user.last_login.isoformat() if user.last_login else None
+            },
+            'student': {
+                'student_id': student.student_id,
+                'first_name': student.first_name,
+                'last_name': student.last_name,
+                'date_of_birth': student.date_of_birth.isoformat() if student.date_of_birth else None,
+                'gender': student.gender,
+                'program_code': student.program_code,
+                'year_of_study': student.year_of_study,
+                'enrollment_date': student.enrollment_date.isoformat() if student.enrollment_date else None,
+                'expected_graduation': student.expected_graduation.isoformat() if student.expected_graduation else None,
+                'gpa': float(student.gpa) if student.gpa else None,
+                'status': student.status
+            }
+        }
+        
+        return api_response(profile_data, 'Profile retrieved successfully')
+        
+    except Exception as e:
+        logger.error(f"Error getting profile: {str(e)}")
+        return error_response('Failed to retrieve profile', 500)
+
+@student_bp.route('/profile', methods=['PUT'])
+@jwt_required()
+@student_required
+def update_profile():
+    """Update student profile"""
+    try:
+        # Get current user
+        user_id = get_jwt_identity()
+        user = get_user_by_id(user_id)
+        
+        if not user or not user.student:
+            return error_response('Student profile not found', 404)
+        
+        data = request.get_json()
+        if not data:
+            return error_response('No data provided', 400)
+        
+        student = user.student
+        
+        # Update allowed fields only
+        allowed_student_fields = ['first_name', 'last_name', 'date_of_birth', 'gender']
+        allowed_user_fields = ['email']
+        
+        # Update student fields
+        for field in allowed_student_fields:
+            if field in data:
+                setattr(student, field, data[field])
+        
+        # Update user fields
+        for field in allowed_user_fields:
+            if field in data:
+                # Check if email already exists
+                if field == 'email' and data[field] != user.email:
+                    existing = User.query.filter_by(email=data[field]).first()
+                    if existing:
+                        return error_response('Email already in use', 400)
+                setattr(user, field, data[field])
+        
+        # Save changes
+        db.session.commit()
+        
+        return api_response({'message': 'Profile updated successfully'})
+        
+    except Exception as e:
+        logger.error(f"Error updating profile: {str(e)}")
+        db.session.rollback()
+        return error_response('Failed to update profile', 500)
+    
+@student_bp.route('/courses/available', methods=['GET'])
+@jwt_required()
+@student_required
+def get_available_courses():
+    """Get courses available for enrollment"""
+    try:
+        # Get current user
+        user_id = get_jwt_identity()
+        user = get_user_by_id(user_id)
+        
+        if not user or not user.student:
+            return error_response('Student profile not found', 404)
+        
+        student_id = user.student.student_id
+        
+        # Get term from query params
+        term_id = request.args.get('term_id', type=int)
+        
+        # Get available courses
+        courses = course_service.get_available_courses(student_id, term_id)
+        
+        return api_response({
+            'courses': courses,
+            'count': len(courses)
+        }, 'Available courses retrieved successfully')
+        
+    except Exception as e:
+        logger.error(f"Error getting available courses: {str(e)}")
+        return error_response('Failed to retrieve available courses', 500)
+
+@student_bp.route('/courses/enroll', methods=['POST'])
+@jwt_required()
+@student_required
+def enroll_in_course():
+    """Enroll in a course"""
+    try:
+        # Get current user
+        user_id = get_jwt_identity()
+        user = get_user_by_id(user_id)
+        
+        if not user or not user.student:
+            return error_response('Student profile not found', 404)
+        
+        data = request.get_json()
+        if not data or 'offering_id' not in data:
+            return error_response('Course offering ID is required', 400)
+        
+        student_id = user.student.student_id
+        offering_id = data['offering_id']
+        
+        # Enroll student
+        enrollment, error = course_service.enroll_student(student_id, offering_id)
+        
+        if error:
+            return error_response(error, 400)
+        
+        return api_response({
+            'message': 'Successfully enrolled in course',
+            'enrollment_id': enrollment.enrollment_id
+        })
+        
+    except Exception as e:
+        logger.error(f"Error enrolling in course: {str(e)}")
+        return error_response('Failed to enroll in course', 500)
+
+@student_bp.route('/courses/drop', methods=['POST'])
+@jwt_required()
+@student_required
+def drop_course():
+    """Drop a course"""
+    try:
+        # Get current user
+        user_id = get_jwt_identity()
+        user = get_user_by_id(user_id)
+        
+        if not user or not user.student:
+            return error_response('Student profile not found', 404)
+        
+        data = request.get_json()
+        if not data or 'offering_id' not in data:
+            return error_response('Course offering ID is required', 400)
+        
+        student_id = user.student.student_id
+        offering_id = data['offering_id']
+        
+        # Drop course
+        success, message = course_service.drop_course(student_id, offering_id)
+        
+        if not success:
+            return error_response(message, 400)
+        
+        return api_response({'message': message})
+        
+    except Exception as e:
+        logger.error(f"Error dropping course: {str(e)}")
+        return error_response('Failed to drop course', 500)

@@ -1,159 +1,108 @@
-// Fixed Student Courses Management - Replace your existing courses.js
 document.addEventListener('DOMContentLoaded', function() {
     // Elements
-    const usernameElement = document.getElementById('username');
-    const logoutBtn = document.getElementById('logoutBtn');
-    const refreshBtn = document.getElementById('refreshBtn');
-    const enrollBtn = document.getElementById('enrollBtn');
-    
-    // Filter elements
-    const termFilter = document.getElementById('termFilter');
-    const searchCourses = document.getElementById('searchCourses');
-    const statusFilter = document.getElementById('statusFilter');
-    
-    // Stats elements
-    const totalCoursesCount = document.getElementById('totalCoursesCount');
-    const currentGPA = document.getElementById('currentGPA');
-    const overallAttendance = document.getElementById('overallAttendance');
-    const atRiskCoursesCount = document.getElementById('atRiskCoursesCount');
-    
-    // Content elements
-    const coursesContainer = document.getElementById('coursesContainer');
-    const emptyState = document.getElementById('emptyState');
-    const attendanceTrend = document.getElementById('attendanceTrend');
-    
-    // Modal elements
-    const courseModal = document.getElementById('courseModal');
-    const modalCourseTitle = document.getElementById('modalCourseTitle');
-    const courseModalContent = document.getElementById('courseModalContent');
-    const closeCourseModal = document.getElementById('closeCourseModal');
-    
-    const quickActionsModal = document.getElementById('quickActionsModal');
-    const quickActionsContent = document.getElementById('quickActionsContent');
-    const closeQuickActionsModal = document.getElementById('closeQuickActionsModal');
+    const elements = {
+        username: document.getElementById('username'),
+        logoutBtn: document.getElementById('logoutBtn'),
+        refreshBtn: document.getElementById('refreshBtn'),
+        enrollBtn: document.getElementById('enrollBtn'),
+        termFilter: document.getElementById('termFilter'),
+        searchCourses: document.getElementById('searchCourses'),
+        statusFilter: document.getElementById('statusFilter'),
+        totalCoursesCount: document.getElementById('totalCoursesCount'),
+        currentGPA: document.getElementById('currentGPA'),
+        overallAttendance: document.getElementById('overallAttendance'),
+        atRiskCoursesCount: document.getElementById('atRiskCoursesCount'),
+        coursesContainer: document.getElementById('coursesContainer'),
+        emptyState: document.getElementById('emptyState'),
+        attendanceTrend: document.getElementById('attendanceTrend'),
+        courseModal: document.getElementById('courseModal'),
+        modalCourseTitle: document.getElementById('modalCourseTitle'),
+        courseModalContent: document.getElementById('courseModalContent'),
+        closeCourseModal: document.getElementById('closeCourseModal'),
+        quickActionsModal: document.getElementById('quickActionsModal'),
+        quickActionsContent: document.getElementById('quickActionsContent'),
+        closeQuickActionsModal: document.getElementById('closeQuickActionsModal')
+    };
     
     // State
-    let allCourses = [];
-    let filteredCourses = [];
-    let dashboardSummary = {};
-    let gradeChart = null;
-    let isLoading = false;
-    let isInitialized = false; // Prevent multiple initializations
-    let eventListenersAttached = false; // Prevent duplicate event listeners
+    let state = {
+        allCourses: [],
+        filteredCourses: [],
+        dashboardSummary: {},
+        gradeChart: null,
+        isLoading: false,
+        isInitialized: false
+    };
     
     // Initialize
     init();
     
     function init() {
-        if (isInitialized) return; // Prevent multiple initializations
+        if (state.isInitialized) return;
         
-        // Check authentication
-        if (!authApi.isLoggedIn()) {
-            window.location.href = '../login.html';
-            return;
-        }
-        
+        // Auth check is now handled by auth-guard.js
+        // Just verify we're a student
         if (!authApi.hasRole('student')) {
-            window.location.href = '../login.html';
+            console.error('Not authorized as student');
             return;
         }
         
-        // Display username
-        const user = authApi.getCurrentUser();
-        if (user) {
-            usernameElement.textContent = user.username;
-        }
+        // Setup event listeners
+        setupEventListeners();
         
-        // Setup event listeners only once
-        if (!eventListenersAttached) {
-            setupEventListeners();
-            eventListenersAttached = true;
-        }
+        state.isInitialized = true;
         
-        isInitialized = true;
-        
-        // Load data with a single call
+        // Load data
         loadAllData();
     }
     
     function setupEventListeners() {
-        // Logout
-        logoutBtn?.addEventListener('click', handleLogout);
-        
-        // Refresh
-        refreshBtn?.addEventListener('click', handleRefresh);
-        
-        // Enroll button
-        enrollBtn?.addEventListener('click', handleEnrollClick);
+        // Basic actions
+        elements.refreshBtn?.addEventListener('click', () => !state.isLoading && loadAllData());
         
         // Search with debounce
         let searchTimeout;
-        searchCourses?.addEventListener('input', function() {
+        elements.searchCourses?.addEventListener('input', function() {
             clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(() => {
-                filterCourses();
-            }, 300);
+            searchTimeout = setTimeout(filterCourses, 300);
         });
         
-        // Term filter
-        termFilter?.addEventListener('change', handleTermChange);
+        // Filters
+        elements.termFilter?.addEventListener('change', () => !state.isLoading && loadCourses());
+        elements.statusFilter?.addEventListener('change', filterCourses);
         
-        // Status filter
-        statusFilter?.addEventListener('change', filterCourses);
-        
-        // Modal event listeners
-        closeCourseModal?.addEventListener('click', () => {
-            courseModal?.classList.add('hidden');
-        });
-        
-        closeQuickActionsModal?.addEventListener('click', () => {
-            quickActionsModal?.classList.add('hidden');
-        });
-        
-        // Close modals on backdrop click
-        courseModal?.addEventListener('click', function(e) {
-            if (e.target === courseModal) {
-                courseModal.classList.add('hidden');
-            }
-        });
-        
-        quickActionsModal?.addEventListener('click', function(e) {
-            if (e.target === quickActionsModal) {
-                quickActionsModal.classList.add('hidden');
-            }
-        });
+        // Modal controls
+        setupModalListeners();
     }
     
-    // Event handlers to prevent multiple calls
-    function handleLogout() {
-        authApi.logout();
-        window.location.href = '../login.html';
-    }
-    
-    function handleRefresh() {
-        if (!isLoading) {
-            loadAllData();
-        }
-    }
-    
-    function handleEnrollClick() {
-        showNotification('Course enrollment feature coming soon!', 'info');
-    }
-    
-    function handleTermChange() {
-        if (!isLoading) {
-            loadCourses();
-        }
+    function setupModalListeners() {
+        // Close buttons
+        elements.closeCourseModal?.addEventListener('click', () => {
+            elements.courseModal?.classList.add('hidden');
+        });
+        
+        elements.closeQuickActionsModal?.addEventListener('click', () => {
+            elements.quickActionsModal?.classList.add('hidden');
+        });
+        
+        // Backdrop clicks
+        elements.courseModal?.addEventListener('click', function(e) {
+            if (e.target === this) this.classList.add('hidden');
+        });
+        
+        elements.quickActionsModal?.addEventListener('click', function(e) {
+            if (e.target === this) this.classList.add('hidden');
+        });
     }
     
     async function loadAllData() {
-        if (isLoading) return; // Prevent multiple simultaneous loads
+        if (state.isLoading) return;
         
         try {
-            isLoading = true;
+            state.isLoading = true;
             showLoading();
             
-            // Load dashboard summary and courses in parallel
+            // Load dashboard and courses in parallel
             const [dashboardResult, coursesResult] = await Promise.allSettled([
                 loadDashboardSummary(),
                 loadCourses()
@@ -162,141 +111,111 @@ document.addEventListener('DOMContentLoaded', function() {
             // Handle results
             if (dashboardResult.status === 'fulfilled') {
                 updateDashboardStats();
-            } else {
-                console.warn('Dashboard summary failed:', dashboardResult.reason);
             }
             
             if (coursesResult.status === 'fulfilled') {
                 displayCourses();
                 updateStats();
-                // Update charts only once, safely
+                // Update charts only once after DOM is ready
                 requestAnimationFrame(() => {
                     updateProgressCharts();
                 });
-            } else {
-                console.error('Courses loading failed:', coursesResult.reason);
-                showError('Failed to load courses');
             }
             
         } catch (error) {
             console.error('Error loading data:', error);
             showError('Failed to load course data');
         } finally {
-            isLoading = false;
+            state.isLoading = false;
         }
     }
     
     async function loadDashboardSummary() {
         try {
-            console.log('Loading dashboard summary...');
-            const response = await apiClient.get('student/dashboard');
+            const response = await studentApi.getDashboard();
             
             if (response.status === 'success' && response.data) {
-                dashboardSummary = response.data.summary || {};
-                return dashboardSummary;
-            } else {
-                // Fallback data if API returns error
-                dashboardSummary = {
-                    gpa: 0,
-                    attendance_rate: 0,
-                    upcoming_assessments: 0
-                };
-                return dashboardSummary;
+                state.dashboardSummary = response.data.summary || {};
+                return state.dashboardSummary;
             }
         } catch (error) {
             console.warn('Dashboard summary not available:', error);
-            dashboardSummary = {
-                gpa: 0,
-                attendance_rate: 0,
-                upcoming_assessments: 0
-            };
-            return dashboardSummary;
+            state.dashboardSummary = { gpa: 0, attendance_rate: 0, upcoming_assessments: 0 };
         }
     }
     
     async function loadCourses() {
         try {
-            console.log('Loading student courses...');
-            
-            // Get term from filter
-            const termId = termFilter?.value || null;
-            let url = 'student/courses';
-            if (termId) {
-                url += `?term_id=${termId}`;
-            }
-            
-            const response = await apiClient.get(url);
-            console.log('Courses response:', response);
+            const termId = elements.termFilter?.value || null;
+            const response = await studentApi.getEnrolledCourses(termId);
             
             if (response.status === 'success' && response.data && response.data.courses) {
-                allCourses = response.data.courses;
-                filteredCourses = [...allCourses];
-                return allCourses;
-            } else {
-                // Handle case where API returns success but no courses
-                allCourses = [];
-                filteredCourses = [];
-                return allCourses;
+                state.allCourses = response.data.courses;
+                state.filteredCourses = [...state.allCourses];
+                return state.allCourses;
             }
         } catch (error) {
             console.error('Error loading courses:', error);
-            // Set mock data for development/testing
-            allCourses = getMockCourses();
-            filteredCourses = [...allCourses];
-            return allCourses;
+            // Use mock data for development/testing
+            state.allCourses = getMockCourses();
+            state.filteredCourses = [...state.allCourses];
         }
     }
     
-    // Mock data for development/testing
+    // Mock data for development
     function getMockCourses() {
         return [
             {
                 course_id: 1,
                 course_code: 'CS101',
                 course_name: 'Introduction to Computer Science',
-                section: 'A',
                 credits: 3,
-                instructor_name: 'Dr. Smith',
-                instructor_email: 'smith@university.edu',
-                meeting_pattern: 'MWF 9:00-10:00 AM',
-                location: 'Room 101',
                 enrollment_status: 'enrolled',
                 current_grade: 'B+',
                 predicted_grade: 'A-',
                 attendance_rate: 85,
-                next_assessment: 'Midterm - Oct 15'
+                offering_id: 1
             },
             {
                 course_id: 2,
                 course_code: 'MATH201',
                 course_name: 'Calculus II',
-                section: 'B',
                 credits: 4,
-                instructor_name: 'Dr. Johnson',
-                instructor_email: 'johnson@university.edu',
-                meeting_pattern: 'TTh 2:00-3:30 PM',
-                location: 'Room 205',
                 enrollment_status: 'enrolled',
                 current_grade: 'C+',
-                predicted_grade: 'B',
-                attendance_rate: 75,
-                next_assessment: 'Quiz - Oct 12'
+                predicted_grade: 'B-',
+                attendance_rate: 72,
+                offering_id: 2
+            },
+            {
+                course_id: 3,
+                course_code: 'PHYS101',
+                course_name: 'Physics I',
+                credits: 4,
+                enrollment_status: 'enrolled',
+                current_grade: 'A',
+                predicted_grade: 'A',
+                attendance_rate: 95,
+                offering_id: 3
             }
         ];
     }
     
     function displayCourses() {
-        if (!filteredCourses || filteredCourses.length === 0) {
+        if (!state.filteredCourses || state.filteredCourses.length === 0) {
             showEmptyState();
             return;
         }
         
         hideEmptyState();
-        const html = filteredCourses.map(course => createCourseCard(course)).join('');
-        coursesContainer.innerHTML = html;
         
-        // Attach event listeners to new course cards
-        attachCourseCardListeners();
+        if (elements.coursesContainer) {
+            elements.coursesContainer.innerHTML = state.filteredCourses
+                .map(course => createCourseCard(course))
+                .join('');
+            
+            attachCourseCardListeners();
+        }
     }
     
     function createCourseCard(course) {
@@ -304,22 +223,16 @@ document.addEventListener('DOMContentLoaded', function() {
         const predictedGrade = course.predicted_grade || 'N/A';
         const currentGrade = course.current_grade || 'N/A';
         
-        // Determine colors and status
         const attendanceColor = attendanceRate >= 80 ? 'text-green-600' :
                                attendanceRate >= 60 ? 'text-yellow-600' : 'text-red-600';
         
-        const gradeColor = ['A', 'A-', 'B+', 'B'].includes(predictedGrade) ? 'text-green-600' :
-                          ['B-', 'C+', 'C'].includes(predictedGrade) ? 'text-yellow-600' : 
-                          ['C-', 'D+', 'D', 'D-', 'F'].includes(predictedGrade) ? 'text-red-600' : 'text-gray-600';
-        
-        const statusColor = course.enrollment_status === 'completed' ? 
-            'bg-gray-100 text-gray-800' : 'bg-green-100 text-green-800';
-        
-        const isAtRisk = ['C-', 'D+', 'D', 'D-', 'F'].includes(predictedGrade) || attendanceRate < 60;
+        const gradeColor = getGradeColor(predictedGrade);
+        const isAtRisk = isStudentAtRisk(course);
         
         return `
             <div class="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 course-card cursor-pointer" 
-                 data-course-id="${course.course_id || ''}" data-enrollment-id="${course.enrollment_id || ''}">
+                 data-course-id="${course.course_id || ''}" 
+                 data-offering-id="${course.offering_id || ''}">
                 <div class="p-6">
                     <!-- Course Header -->
                     <div class="flex justify-between items-start mb-4">
@@ -327,15 +240,12 @@ document.addEventListener('DOMContentLoaded', function() {
                             <h3 class="text-lg font-semibold text-gray-900 mb-1">
                                 ${course.course_name || 'Course Name'}
                             </h3>
-                            <p class="text-sm text-gray-600 mb-1">
-                                ${course.course_code || 'N/A'} • Section ${course.section || 'N/A'} • ${course.credits || 0} Credits
-                            </p>
-                            <p class="text-xs text-gray-500">
-                                Instructor: ${course.instructor_name || 'TBA'}
+                            <p class="text-sm text-gray-600">
+                                ${course.course_code || 'N/A'} • ${course.credits || 0} Credits
                             </p>
                         </div>
                         <div class="flex flex-col items-end space-y-1">
-                            <span class="px-2 py-1 text-xs font-medium rounded-full ${statusColor}">
+                            <span class="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
                                 ${course.enrollment_status || 'Enrolled'}
                             </span>
                             ${isAtRisk ? '<span class="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">At Risk</span>' : ''}
@@ -358,32 +268,14 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                     </div>
                     
-                    <!-- Course Details -->
-                    <div class="space-y-1 mb-4 text-sm text-gray-600">
-                        <div class="flex items-center">
-                            <i class="fas fa-clock w-4 mr-2"></i>
-                            <span>${course.meeting_pattern || 'Schedule TBA'}</span>
-                        </div>
-                        <div class="flex items-center">
-                            <i class="fas fa-map-marker-alt w-4 mr-2"></i>
-                            <span>${course.location || 'Location TBA'}</span>
-                        </div>
-                        ${course.next_assessment ? `
-                        <div class="flex items-center text-orange-600">
-                            <i class="fas fa-clipboard-list w-4 mr-2"></i>
-                            <span>Next: ${course.next_assessment}</span>
-                        </div>
-                        ` : ''}
-                    </div>
-                    
                     <!-- Action Buttons -->
                     <div class="flex space-x-2">
                         <button class="flex-1 bg-blue-600 text-white py-2 px-3 rounded text-sm hover:bg-blue-700 view-details-btn"
-                                data-course-id="${course.course_id || ''}" onclick="event.stopPropagation()">
+                                data-course-id="${course.course_id || ''}">
                             <i class="fas fa-eye mr-1"></i> Details
                         </button>
                         <button class="flex-1 bg-green-600 text-white py-2 px-3 rounded text-sm hover:bg-green-700 quick-actions-btn"
-                                data-course-id="${course.course_id || ''}" onclick="event.stopPropagation()">
+                                data-course-id="${course.course_id || ''}">
                             <i class="fas fa-bolt mr-1"></i> Actions
                         </button>
                     </div>
@@ -392,24 +284,26 @@ document.addEventListener('DOMContentLoaded', function() {
         `;
     }
     
+    // Helper functions
+    function getGradeColor(grade) {
+        if (['A', 'A-', 'B+', 'B'].includes(grade)) return 'text-green-600';
+        if (['B-', 'C+', 'C'].includes(grade)) return 'text-yellow-600';
+        if (['C-', 'D+', 'D', 'D-', 'F'].includes(grade)) return 'text-red-600';
+        return 'text-gray-600';
+    }
+    
+    function isStudentAtRisk(course) {
+        return ['C-', 'D+', 'D', 'D-', 'F'].includes(course.predicted_grade) || 
+               (course.attendance_rate && course.attendance_rate < 60);
+    }
+    
     function attachCourseCardListeners() {
-        // Remove existing listeners first to prevent duplicates
-        document.querySelectorAll('.view-details-btn').forEach(btn => {
-            btn.replaceWith(btn.cloneNode(true));
-        });
-        
-        document.querySelectorAll('.quick-actions-btn').forEach(btn => {
-            btn.replaceWith(btn.cloneNode(true));
-        });
-        
-        // Attach new listeners
+        // Use event delegation for better performance
         document.querySelectorAll('.view-details-btn').forEach(btn => {
             btn.addEventListener('click', function(e) {
                 e.stopPropagation();
                 const courseId = this.dataset.courseId;
-                if (courseId) {
-                    viewCourseDetails(courseId);
-                }
+                if (courseId) viewCourseDetails(courseId);
             });
         });
         
@@ -417,31 +311,26 @@ document.addEventListener('DOMContentLoaded', function() {
             btn.addEventListener('click', function(e) {
                 e.stopPropagation();
                 const courseId = this.dataset.courseId;
-                if (courseId) {
-                    showQuickActions(courseId);
-                }
+                if (courseId) showQuickActions(courseId);
             });
         });
         
-        // Course card clicks
         document.querySelectorAll('.course-card').forEach(card => {
             card.addEventListener('click', function() {
                 const courseId = this.dataset.courseId;
-                if (courseId) {
-                    viewCourseDetails(courseId);
-                }
+                if (courseId) viewCourseDetails(courseId);
             });
         });
     }
     
     function filterCourses() {
-        const searchTerm = searchCourses?.value?.toLowerCase() || '';
-        const selectedStatus = statusFilter?.value || '';
+        const searchTerm = elements.searchCourses?.value?.toLowerCase() || '';
+        const selectedStatus = elements.statusFilter?.value || '';
         
-        filteredCourses = allCourses.filter(course => {
+        state.filteredCourses = state.allCourses.filter(course => {
             const matchesSearch = !searchTerm || 
-                (course.course_name && course.course_name.toLowerCase().includes(searchTerm)) ||
-                (course.course_code && course.course_code.toLowerCase().includes(searchTerm));
+                course.course_name?.toLowerCase().includes(searchTerm) ||
+                course.course_code?.toLowerCase().includes(searchTerm);
             
             const matchesStatus = !selectedStatus || 
                 course.enrollment_status === selectedStatus;
@@ -454,149 +343,200 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function updateStats() {
-        const totalCourses = filteredCourses.length;
-        const atRiskCourses = filteredCourses.filter(c => 
-            ['C-', 'D+', 'D', 'D-', 'F'].includes(c.predicted_grade) || 
-            (c.attendance_rate && c.attendance_rate < 60)
-        ).length;
+        const totalCourses = state.filteredCourses.length;
+        const atRiskCourses = state.filteredCourses.filter(isStudentAtRisk).length;
         
-        if (totalCoursesCount) totalCoursesCount.textContent = totalCourses;
-        if (atRiskCoursesCount) atRiskCoursesCount.textContent = atRiskCourses;
+        if (elements.totalCoursesCount) elements.totalCoursesCount.textContent = totalCourses;
+        if (elements.atRiskCoursesCount) elements.atRiskCoursesCount.textContent = atRiskCourses;
     }
     
     function updateDashboardStats() {
-        if (currentGPA) currentGPA.textContent = dashboardSummary.gpa || '-';
-        if (overallAttendance) overallAttendance.textContent = `${Math.round(dashboardSummary.attendance_rate || 0)}%`;
+        if (elements.currentGPA) {
+            elements.currentGPA.textContent = state.dashboardSummary.gpa || '-';
+        }
+        if (elements.overallAttendance) {
+            elements.overallAttendance.textContent = `${Math.round(state.dashboardSummary.attendance_rate || 0)}%`;
+        }
     }
     
     function updateProgressCharts() {
-        try {
-            // Update attendance trend (safer)
-            updateAttendanceTrend();
-            
-            // Update grade chart with error handling
-            const ctx = document.getElementById('gradeChart');
-            if (ctx && typeof Chart !== 'undefined' && allCourses.length > 0) {
-                updateGradeChart();
-            }
-        } catch (error) {
-            console.error('Error updating charts:', error);
-        }
+        // Update attendance trend
+        updateAttendanceTrend();
+        
+        // Replace chart with grade summary
+        updateGradeSummary();
     }
     
-    function updateGradeChart() {
-        try {
-            const ctx = document.getElementById('gradeChart');
-            if (!ctx) return;
+    function updateGradeSummary() {
+        const gradeContainer = document.getElementById('gradeChart');
+        if (!gradeContainer) return;
+        
+        // Calculate grade distribution
+        const gradeDistribution = {
+            'A': 0,
+            'B': 0,
+            'C': 0,
+            'D': 0,
+            'F': 0
+        };
+        
+        let total = 0;
+        state.allCourses.forEach(course => {
+            const grade = course.predicted_grade || course.current_grade;
+            if (!grade || grade === 'N/A') return;
             
-            // Destroy existing chart first
-            if (gradeChart) {
-                gradeChart.destroy();
-                gradeChart = null;
-            }
-            
-            // Calculate grade distribution
-            const gradeCategories = {
-                'A (90-100)': 0,
-                'B (80-89)': 0,
-                'C (70-79)': 0,
-                'D (60-69)': 0,
-                'F (0-59)': 0
-            };
-            
-            allCourses.forEach(course => {
-                const grade = course.predicted_grade;
-                if (['A+', 'A', 'A-'].includes(grade)) gradeCategories['A (90-100)']++;
-                else if (['B+', 'B', 'B-'].includes(grade)) gradeCategories['B (80-89)']++;
-                else if (['C+', 'C', 'C-'].includes(grade)) gradeCategories['C (70-79)']++;
-                else if (['D+', 'D', 'D-'].includes(grade)) gradeCategories['D (60-69)']++;
-                else if (grade === 'F') gradeCategories['F (0-59)']++;
-            });
-            
-            const labels = Object.keys(gradeCategories);
-            const data = Object.values(gradeCategories);
-            
-            // Only create chart if we have data
-            const hasData = data.some(count => count > 0);
-            if (!hasData) return;
-            
-            gradeChart = new Chart(ctx, {
-                type: 'doughnut',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        data: data,
-                        backgroundColor: [
-                            '#10B981', // Green for A
-                            '#3B82F6', // Blue for B  
-                            '#F59E0B', // Yellow for C
-                            '#EF4444', // Red for D
-                            '#DC2626'  // Dark red for F
-                        ],
-                        borderWidth: 2,
-                        borderColor: '#fff'
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'bottom',
-                            labels: {
-                                font: {
-                                    size: 12
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        } catch (error) {
-            console.error('Error creating grade chart:', error);
+            if (['A+', 'A', 'A-'].includes(grade)) gradeDistribution['A']++;
+            else if (['B+', 'B', 'B-'].includes(grade)) gradeDistribution['B']++;
+            else if (['C+', 'C', 'C-'].includes(grade)) gradeDistribution['C']++;
+            else if (['D+', 'D', 'D-'].includes(grade)) gradeDistribution['D']++;
+            else if (grade === 'F') gradeDistribution['F']++;
+            total++;
+        });
+        
+        // Create a simple static pie chart using SVG
+        const pieChartHTML = createStaticPieChart(gradeDistribution, total);
+        
+        // Replace canvas with our static pie chart
+        gradeContainer.parentElement.innerHTML = '<h4 class="font-medium text-gray-900 mb-3">Grade Distribution</h4>' + 
+            '<div id="gradeChart" class="flex justify-center">' + pieChartHTML + '</div>';
+    }
+    
+    function createStaticPieChart(data, total) {
+        if (total === 0) {
+            return '<p class="text-gray-500 text-center">No grade data available</p>';
         }
+        
+        const width = 250;
+        const height = 250;
+        const radius = 100;
+        const centerX = width / 2;
+        const centerY = height / 2;
+        
+        const colors = {
+            'A': '#10B981', // Green
+            'B': '#3B82F6', // Blue
+            'C': '#F59E0B', // Yellow
+            'D': '#EF4444', // Orange
+            'F': '#DC2626'  // Red
+        };
+        
+        // Calculate angles for each segment
+        let currentAngle = -90; // Start at top
+        const segments = [];
+        
+        Object.entries(data).forEach(([grade, count]) => {
+            if (count > 0) {
+                const percentage = (count / total) * 100;
+                const angle = (count / total) * 360;
+                
+                segments.push({
+                    grade,
+                    count,
+                    percentage,
+                    startAngle: currentAngle,
+                    endAngle: currentAngle + angle,
+                    color: colors[grade]
+                });
+                
+                currentAngle += angle;
+            }
+        });
+        
+        // Create SVG paths for pie segments
+        const svgPaths = segments.map(segment => {
+            const startAngleRad = (segment.startAngle * Math.PI) / 180;
+            const endAngleRad = (segment.endAngle * Math.PI) / 180;
+            
+            const x1 = centerX + radius * Math.cos(startAngleRad);
+            const y1 = centerY + radius * Math.sin(startAngleRad);
+            const x2 = centerX + radius * Math.cos(endAngleRad);
+            const y2 = centerY + radius * Math.sin(endAngleRad);
+            
+            const largeArcFlag = segment.endAngle - segment.startAngle > 180 ? 1 : 0;
+            
+            const pathData = [
+                `M ${centerX} ${centerY}`,
+                `L ${x1} ${y1}`,
+                `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}`,
+                'Z'
+            ].join(' ');
+            
+            return `<path d="${pathData}" fill="${segment.color}" stroke="white" stroke-width="2"/>`;
+        }).join('');
+        
+        // Create legend
+        const legend = segments.map(segment => `
+            <div class="flex items-center space-x-2">
+                <div class="w-4 h-4 rounded" style="background-color: ${segment.color}"></div>
+                <span class="text-sm">Grade ${segment.grade}: ${segment.count} (${segment.percentage.toFixed(1)}%)</span>
+            </div>
+        `).join('');
+        
+        return `
+            <div class="text-center">
+                <svg width="${width}" height="${height}" class="mx-auto">
+                    ${svgPaths}
+                </svg>
+                <div class="mt-4 space-y-1 text-left inline-block">
+                    ${legend}
+                </div>
+                <div class="mt-2 text-sm text-gray-600">
+                    Total Courses: ${total}
+                </div>
+            </div>
+        `;
     }
     
     function updateAttendanceTrend() {
-        if (!attendanceTrend) return;
+        if (!elements.attendanceTrend) return;
         
-        try {
-            const html = allCourses.slice(0, 5).map(course => {
-                const rate = course.attendance_rate || 0;
-                const color = rate >= 80 ? 'bg-green-500' :
-                             rate >= 60 ? 'bg-yellow-500' : 'bg-red-500';
-                
-                return `
-                    <div class="flex items-center justify-between p-2 bg-gray-50 rounded">
-                        <span class="text-sm font-medium">${course.course_code || 'N/A'}</span>
-                        <div class="flex items-center space-x-2">
-                            <div class="w-16 h-2 bg-gray-200 rounded-full">
-                                <div class="${color} h-2 rounded-full" style="width: ${rate}%"></div>
-                            </div>
-                            <span class="text-sm text-gray-600">${Math.round(rate)}%</span>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-            
-            attendanceTrend.innerHTML = html || '<p class="text-gray-500 text-sm">No attendance data</p>';
-        } catch (error) {
-            console.error('Error updating attendance trend:', error);
-            attendanceTrend.innerHTML = '<p class="text-gray-500 text-sm">Error loading attendance data</p>';
+        if (state.allCourses.length === 0) {
+            elements.attendanceTrend.innerHTML = '<p class="text-gray-500 text-sm">No attendance data available</p>';
+            return;
         }
+        
+        const html = state.allCourses.map(course => {
+            const rate = course.attendance_rate || 0;
+            const color = rate >= 80 ? 'bg-green-500' :
+                         rate >= 60 ? 'bg-yellow-500' : 'bg-red-500';
+            
+            return `
+                <div class="flex items-center justify-between p-2 bg-gray-50 rounded">
+                    <span class="text-sm font-medium">${course.course_code || 'N/A'}</span>
+                    <div class="flex items-center space-x-2">
+                        <div class="w-24 h-2 bg-gray-200 rounded-full">
+                            <div class="${color} h-2 rounded-full transition-all duration-300" style="width: ${rate}%"></div>
+                        </div>
+                        <span class="text-sm text-gray-600 w-12 text-right">${Math.round(rate)}%</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+        elements.attendanceTrend.innerHTML = html;
     }
     
+    /* Temporarily commented out - Chart causing issues
+    function updateGradeChart() {
+        // Chart code removed temporarily
+    }
+    */
+    
     async function viewCourseDetails(courseId) {
-        try {
-            const course = allCourses.find(c => c.course_id == courseId);
-            if (!course) {
-                showError('Course not found');
-                return;
-            }
-            
-            modalCourseTitle.textContent = `${course.course_code || 'N/A'} - ${course.course_name || 'Course'}`;
-            
-            courseModalContent.innerHTML = `
+        const course = state.allCourses.find(c => c.course_id == courseId);
+        if (!course) {
+            showError('Course not found');
+            return;
+        }
+        
+        // Update modal title
+        if (elements.modalCourseTitle) {
+            elements.modalCourseTitle.textContent = `${course.course_code || 'N/A'} - ${course.course_name || 'Course'}`;
+        }
+        
+        // Update modal content
+        if (elements.courseModalContent) {
+            elements.courseModalContent.innerHTML = `
                 <div class="space-y-6">
                     <!-- Course Overview -->
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -604,20 +544,17 @@ document.addEventListener('DOMContentLoaded', function() {
                             <h4 class="font-semibold text-gray-900 mb-3">Course Information</h4>
                             <div class="space-y-2 text-sm">
                                 <p><strong>Course Code:</strong> ${course.course_code || 'N/A'}</p>
+                                <p><strong>Course Name:</strong> ${course.course_name || 'N/A'}</p>
                                 <p><strong>Credits:</strong> ${course.credits || 'N/A'}</p>
-                                <p><strong>Section:</strong> ${course.section || 'N/A'}</p>
-                                <p><strong>Instructor:</strong> ${course.instructor_name || 'TBA'}</p>
-                                <p><strong>Schedule:</strong> ${course.meeting_pattern || 'TBA'}</p>
-                                <p><strong>Location:</strong> ${course.location || 'TBA'}</p>
+                                <p><strong>Status:</strong> <span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">${course.enrollment_status || 'Enrolled'}</span></p>
                             </div>
                         </div>
                         <div>
                             <h4 class="font-semibold text-gray-900 mb-3">Academic Performance</h4>
                             <div class="space-y-2 text-sm">
-                                <p><strong>Current Grade:</strong> ${course.current_grade || 'N/A'}</p>
-                                <p><strong>Predicted Grade:</strong> ${course.predicted_grade || 'N/A'}</p>
-                                <p><strong>Attendance Rate:</strong> ${Math.round(course.attendance_rate || 0)}%</p>
-                                <p><strong>Enrollment Status:</strong> ${course.enrollment_status || 'Enrolled'}</p>
+                                <p><strong>Current Grade:</strong> <span class="font-bold text-blue-600">${course.current_grade || 'N/A'}</span></p>
+                                <p><strong>Predicted Grade:</strong> <span class="font-bold ${getGradeColor(course.predicted_grade)}">${course.predicted_grade || 'N/A'}</span></p>
+                                <p><strong>Attendance Rate:</strong> <span class="font-bold">${Math.round(course.attendance_rate || 0)}%</span></p>
                             </div>
                         </div>
                     </div>
@@ -643,76 +580,73 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     <!-- Quick Links -->
                     <div class="grid grid-cols-2 gap-3 pt-4 border-t">
-                        <button onclick="navigateToPage('attendance.html?course=${course.course_id}')" 
-                                class="bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700">
+                        <a href="attendance.html?course=${course.course_id}" 
+                           class="bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 text-center">
                             <i class="fas fa-calendar-check mr-2"></i>View Attendance
-                        </button>
-                        <button onclick="navigateToPage('assessments.html?course=${course.course_id}')" 
-                                class="bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700">
+                        </a>
+                        <a href="assessments.html?course=${course.course_id}" 
+                           class="bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 text-center">
                             <i class="fas fa-clipboard-check mr-2"></i>View Assessments
-                        </button>
-                        <button onclick="navigateToPage('grades.html?course=${course.course_id}')" 
-                                class="bg-purple-600 text-white py-2 px-4 rounded hover:bg-purple-700">
+                        </a>
+                        <a href="grades.html?course=${course.course_id}" 
+                           class="bg-purple-600 text-white py-2 px-4 rounded hover:bg-purple-700 text-center">
                             <i class="fas fa-chart-line mr-2"></i>View Grades
-                        </button>
-                        <button onclick="navigateToPage('predictions.html?course=${course.course_id}')" 
-                                class="bg-orange-600 text-white py-2 px-4 rounded hover:bg-orange-700">
+                        </a>
+                        <a href="predictions.html?course=${course.course_id}" 
+                           class="bg-orange-600 text-white py-2 px-4 rounded hover:bg-orange-700 text-center">
                             <i class="fas fa-crystal-ball mr-2"></i>View Predictions
-                        </button>
+                        </a>
                     </div>
                 </div>
             `;
-            
-            courseModal.classList.remove('hidden');
-            
-        } catch (error) {
-            console.error('Error viewing course details:', error);
-            showError('Failed to load course details');
         }
+        
+        // Show modal
+        elements.courseModal?.classList.remove('hidden');
     }
     
     function showQuickActions(courseId) {
-        const course = allCourses.find(c => c.course_id == courseId);
+        const course = state.allCourses.find(c => c.course_id == courseId);
         if (!course) return;
         
-        quickActionsContent.innerHTML = `
-            <button onclick="navigateToPage('attendance.html?course=${course.course_id}')" 
-                    class="w-full text-left p-3 hover:bg-gray-50 rounded border">
-                <i class="fas fa-calendar-check text-green-600 mr-3"></i>
-                <span class="font-medium">View Attendance</span>
-                <p class="text-sm text-gray-600 mt-1">Check your attendance record</p>
-            </button>
-            <button onclick="navigateToPage('assessments.html?course=${course.course_id}')" 
-                    class="w-full text-left p-3 hover:bg-gray-50 rounded border">
-                <i class="fas fa-clipboard-check text-blue-600 mr-3"></i>
-                <span class="font-medium">View Assessments</span>
-                <p class="text-sm text-gray-600 mt-1">See assignments and grades</p>
-            </button>
-            <button onclick="navigateToPage('predictions.html?course=${course.course_id}')" 
-                    class="w-full text-left p-3 hover:bg-gray-50 rounded border">
-                <i class="fas fa-crystal-ball text-purple-600 mr-3"></i>
-                <span class="font-medium">Grade Predictions</span>
-                <p class="text-sm text-gray-600 mt-1">View performance predictions</p>
-            </button>
-            <button onclick="window.location.href='mailto:${course.instructor_email || ''}'" 
-                    class="w-full text-left p-3 hover:bg-gray-50 rounded border">
-                <i class="fas fa-envelope text-orange-600 mr-3"></i>
-                <span class="font-medium">Contact Instructor</span>
-                <p class="text-sm text-gray-600 mt-1">Send email to ${course.instructor_name || 'instructor'}</p>
-            </button>
-        `;
+        // Update quick actions content
+        if (elements.quickActionsContent) {
+            elements.quickActionsContent.innerHTML = `
+                <a href="attendance.html?course=${course.course_id}" 
+                   class="block w-full text-left p-3 hover:bg-gray-50 rounded border">
+                    <i class="fas fa-calendar-check text-green-600 mr-3"></i>
+                    <span class="font-medium">View Attendance</span>
+                    <p class="text-sm text-gray-600 mt-1">Check your attendance record for this course</p>
+                </a>
+                <a href="assessments.html?course=${course.course_id}" 
+                   class="block w-full text-left p-3 hover:bg-gray-50 rounded border">
+                    <i class="fas fa-clipboard-check text-blue-600 mr-3"></i>
+                    <span class="font-medium">View Assessments</span>
+                    <p class="text-sm text-gray-600 mt-1">See assignments, quizzes, and exams</p>
+                </a>
+                <a href="grades.html?course=${course.course_id}" 
+                   class="block w-full text-left p-3 hover:bg-gray-50 rounded border">
+                    <i class="fas fa-chart-line text-purple-600 mr-3"></i>
+                    <span class="font-medium">View Grades</span>
+                    <p class="text-sm text-gray-600 mt-1">Check your grades and progress</p>
+                </a>
+                <a href="predictions.html?course=${course.course_id}" 
+                   class="block w-full text-left p-3 hover:bg-gray-50 rounded border">
+                    <i class="fas fa-crystal-ball text-orange-600 mr-3"></i>
+                    <span class="font-medium">Grade Predictions</span>
+                    <p class="text-sm text-gray-600 mt-1">View AI-powered grade predictions</p>
+                </a>
+            `;
+        }
         
-        quickActionsModal.classList.remove('hidden');
+        // Show quick actions modal
+        elements.quickActionsModal?.classList.remove('hidden');
     }
     
-    // Helper function for navigation
-    function navigateToPage(url) {
-        window.location.href = url;
-    }
-    
+    // UI Helper functions
     function showLoading() {
-        if (coursesContainer) {
-            coursesContainer.innerHTML = `
+        if (elements.coursesContainer) {
+            elements.coursesContainer.innerHTML = `
                 <div class="col-span-full text-center py-8">
                     <div class="inline-flex items-center px-4 py-2 text-gray-600">
                         <i class="fas fa-spinner fa-spin mr-2"></i>
@@ -724,12 +658,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function showEmptyState() {
-        if (coursesContainer) coursesContainer.innerHTML = '';
-        if (emptyState) emptyState.classList.remove('hidden');
+        if (elements.coursesContainer) elements.coursesContainer.innerHTML = '';
+        if (elements.emptyState) elements.emptyState.classList.remove('hidden');
     }
     
     function hideEmptyState() {
-        if (emptyState) emptyState.classList.add('hidden');
+        if (elements.emptyState) elements.emptyState.classList.add('hidden');
     }
     
     function showError(message) {
@@ -741,7 +675,7 @@ document.addEventListener('DOMContentLoaded', function() {
                        type === 'success' ? 'bg-green-500' : 'bg-blue-500';
         
         const toast = document.createElement('div');
-        toast.className = `fixed top-4 right-4 ${bgColor} text-white px-4 py-2 rounded shadow-lg z-50 transition-opacity duration-300`;
+        toast.className = `fixed top-4 right-4 ${bgColor} text-white px-4 py-2 rounded shadow-lg z-50`;
         toast.innerHTML = `
             <div class="flex items-center">
                 <i class="fas fa-${type === 'error' ? 'exclamation-circle' : 'info-circle'} mr-2"></i>
@@ -751,19 +685,10 @@ document.addEventListener('DOMContentLoaded', function() {
         
         document.body.appendChild(toast);
         
-        // Fade out and remove
         setTimeout(() => {
             toast.style.opacity = '0';
-            setTimeout(() => {
-                if (toast.parentNode) {
-                    toast.parentNode.removeChild(toast);
-                }
-            }, 300);
+            toast.style.transition = 'opacity 0.3s ease-out';
+            setTimeout(() => toast.remove(), 300);
         }, 4000);
     }
 });
-
-// Global function for navigation (needed for onclick handlers)
-window.navigateToPage = function(url) {
-    window.location.href = url;
-};

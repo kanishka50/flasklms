@@ -1,0 +1,245 @@
+<!-- frontend/src/student/profile.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Profile - Student Portal</title>
+    
+    <!-- Compiled Tailwind CSS -->
+    <link href="../css/tailwind.css" rel="stylesheet">
+    
+    <!-- Custom CSS -->
+    <link href="../css/main.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+    <div class="min-h-screen">
+        <!-- Navigation -->
+        <nav class="bg-gray-800 text-white shadow-lg">
+            <div class="container mx-auto px-4">
+                <div class="flex justify-between items-center py-4">
+                    <a class="text-xl font-bold" href="#">Grade Prediction System</a>
+                    <div class="hidden md:block">
+                        <div class="flex space-x-4">
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="dashboard.html">Dashboard</a>
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="courses.html">My Courses</a>
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="assessments.html">Assessments</a>
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="grades.html">Grades</a>
+                            <a class="px-3 py-2 rounded-md bg-gray-900" href="profile.html">Profile</a>
+                        </div>
+                    </div>
+                    <div>
+                        <span id="username" class="mr-4"></span>
+                        <button id="logoutBtn" class="px-3 py-2 rounded-md hover:bg-gray-700">Logout</button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+        
+        <div class="container mx-auto px-4 py-8">
+            <h1 class="text-3xl font-bold mb-8">My Profile</h1>
+            
+            <!-- Profile Form -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <form id="profileForm">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Account Information -->
+                        <div class="col-span-2">
+                            <h3 class="text-lg font-semibold mb-4 border-b pb-2">Account Information</h3>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Username</label>
+                            <input type="text" id="username" class="w-full px-3 py-2 border rounded-md bg-gray-100" readonly>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                            <input type="email" id="email" class="w-full px-3 py-2 border rounded-md" required>
+                        </div>
+                        
+                        <!-- Personal Information -->
+                        <div class="col-span-2 mt-4">
+                            <h3 class="text-lg font-semibold mb-4 border-b pb-2">Personal Information</h3>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Student ID</label>
+                            <input type="text" id="studentId" class="w-full px-3 py-2 border rounded-md bg-gray-100" readonly>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">First Name</label>
+                            <input type="text" id="firstName" class="w-full px-3 py-2 border rounded-md" required>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Last Name</label>
+                            <input type="text" id="lastName" class="w-full px-3 py-2 border rounded-md" required>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Date of Birth</label>
+                            <input type="date" id="dateOfBirth" class="w-full px-3 py-2 border rounded-md">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Gender</label>
+                            <select id="gender" class="w-full px-3 py-2 border rounded-md">
+                                <option value="">Select...</option>
+                                <option value="M">Male</option>
+                                <option value="F">Female</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Academic Information -->
+                        <div class="col-span-2 mt-4">
+                            <h3 class="text-lg font-semibold mb-4 border-b pb-2">Academic Information</h3>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Program</label>
+                            <input type="text" id="program" class="w-full px-3 py-2 border rounded-md bg-gray-100" readonly>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Year of Study</label>
+                            <input type="text" id="yearOfStudy" class="w-full px-3 py-2 border rounded-md bg-gray-100" readonly>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">GPA</label>
+                            <p id="gpa" class="text-lg font-semibold">N/A</p>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                            <p id="status" class="text-lg font-semibold">N/A</p>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Enrollment Date</label>
+                            <p id="enrollmentDate" class="text-lg">N/A</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Submit Button -->
+                    <div class="mt-6 flex justify-end">
+                        <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700">
+                            Update Profile
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Loading indicator -->
+        <div id="loader" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" style="display: none;">
+            <div class="bg-white p-4 rounded-lg">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- JavaScript Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.2/dist/axios.min.js"></script>
+    
+    <!-- Custom JavaScript -->
+    <script src="../js/api/client.js"></script>
+    <script src="../js/api/auth.js"></script>
+    <script src="../js/api/student.js"></script>
+    <script src="../js/utils/auth-guard.js"></script>
+    <script src="../js/student/profile.js"></script>
+</body>
+</html>
+
+<!-- frontend/src/student/courses.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Courses - Student Portal</title>
+    
+    <!-- Compiled Tailwind CSS -->
+    <link href="../css/tailwind.css" rel="stylesheet">
+    
+    <!-- Custom CSS -->
+    <link href="../css/main.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+    <div class="min-h-screen">
+        <!-- Navigation -->
+        <nav class="bg-gray-800 text-white shadow-lg">
+            <div class="container mx-auto px-4">
+                <div class="flex justify-between items-center py-4">
+                    <a class="text-xl font-bold" href="#">Grade Prediction System</a>
+                    <div class="hidden md:block">
+                        <div class="flex space-x-4">
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="dashboard.html">Dashboard</a>
+                            <a class="px-3 py-2 rounded-md bg-gray-900" href="courses.html">My Courses</a>
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="assessments.html">Assessments</a>
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="grades.html">Grades</a>
+                            <a class="px-3 py-2 rounded-md hover:bg-gray-700" href="profile.html">Profile</a>
+                        </div>
+                    </div>
+                    <div>
+                        <span id="username" class="mr-4"></span>
+                        <button id="logoutBtn" class="px-3 py-2 rounded-md hover:bg-gray-700">Logout</button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+        
+        <div class="container mx-auto px-4 py-8">
+            <h1 class="text-3xl font-bold mb-8">Course Management</h1>
+            
+            <!-- Enrolled Courses -->
+            <div class="mb-8">
+                <div class="bg-white rounded-lg shadow-md">
+                    <div class="border-b px-6 py-4">
+                        <h2 class="text-xl font-semibold">My Enrolled Courses</h2>
+                    </div>
+                    <div class="p-6">
+                        <div id="enrolledCoursesList">
+                            <p class="text-gray-500">Loading enrolled courses...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Available Courses -->
+            <div>
+                <div class="bg-white rounded-lg shadow-md">
+                    <div class="border-b px-6 py-4">
+                        <h2 class="text-xl font-semibold">Available Courses</h2>
+                    </div>
+                    <div class="p-6">
+                        <div id="availableCoursesList">
+                            <p class="text-gray-500">Loading available courses...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Loading indicator -->
+        <div id="loader" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" style="display: none;">
+            <div class="bg-white p-4 rounded-lg">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- JavaScript Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.2/dist/axios.min.js"></script>
+    
+    <!-- Custom JavaScript -->
+    <script src="../js/api/client.js"></script>
+    <script src="../js/api/auth.js"></script>
+    <script src="../js/api/student.js"></script>
+    <script src="../js/utils/auth-guard.js"></script>
+    <script src="../js/student/courses.js"></script>
+</body>
+</html>
