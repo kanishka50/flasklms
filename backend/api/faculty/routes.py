@@ -639,3 +639,202 @@ def delete_assessment(assessment_id):
     except Exception as e:
         logger.error(f"Error deleting assessment: {str(e)}")
         return error_response('Failed to delete assessment', 500)
+    
+
+@faculty_bp.route('/all-students', methods=['GET'])
+@jwt_required()
+@faculty_required
+def get_all_students():
+    """Get all students enrolled in faculty's courses"""
+    try:
+        # Get current user
+        user_id = get_jwt_identity()
+        user = get_user_by_id(user_id)
+        
+        if not user or not user.faculty:
+            return jsonify({
+                'status': 'error',
+                'message': 'Faculty profile not found'
+            }), 404
+        
+        faculty_id = user.faculty.faculty_id
+        
+        # Get all students across all courses
+        all_students = faculty_service.get_all_students(faculty_id)
+        
+        # Get summary statistics
+        total_students = len(all_students)
+        active_students = len([s for s in all_students if s['current_grade'] != 'W'])
+        at_risk_students = len([s for s in all_students if s['risk_level'] in ['medium', 'high']])
+        
+        # Calculate average attendance
+        attendance_rates = [s['attendance_rate'] for s in all_students if s['attendance_rate'] is not None]
+        avg_attendance = sum(attendance_rates) / len(attendance_rates) if attendance_rates else 0
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'students': all_students,
+                'summary': {
+                    'total_students': total_students,
+                    'active_students': active_students,
+                    'at_risk_students': at_risk_students,
+                    'average_attendance': round(avg_attendance, 1)
+                }
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting all students: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': 'Failed to load students'
+        }), 500
+    
+# Add this route to backend/api/faculty/routes.py
+
+@faculty_bp.route('/students/<string:student_id>', methods=['GET'])
+@jwt_required()
+@faculty_required
+def get_student_detail(student_id):
+    """Get detailed information for a specific student"""
+    try:
+        # Get current user
+        user_id = get_jwt_identity()
+        user = get_user_by_id(user_id)
+        
+        if not user or not user.faculty:
+            return jsonify({
+                'status': 'error',
+                'message': 'Faculty profile not found'
+            }), 404
+        
+        faculty_id = user.faculty.faculty_id
+        
+        # Get student detail
+        student_detail = faculty_service.get_student_detail(faculty_id, student_id)
+        
+        if not student_detail:
+            return jsonify({
+                'status': 'error',
+                'message': 'Student not found or not enrolled in your courses'
+            }), 404
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'student': student_detail
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting student detail: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': 'Failed to load student details'
+        }), 500
+
+# Additional routes for student detail page data
+
+@faculty_bp.route('/students/<string:student_id>/attendance', methods=['GET'])
+@jwt_required()
+@faculty_required
+def get_student_attendance(student_id):
+    """Get attendance data for a specific student"""
+    try:
+        # Get current user
+        user_id = get_jwt_identity()
+        user = get_user_by_id(user_id)
+        
+        if not user or not user.faculty:
+            return jsonify({
+                'status': 'error',
+                'message': 'Faculty profile not found'
+            }), 404
+        
+        faculty_id = user.faculty.faculty_id
+        
+        # Get student attendance data
+        attendance_data = faculty_service.get_student_attendance_detail(faculty_id, student_id)
+        
+        return jsonify({
+            'status': 'success',
+            'data': attendance_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting student attendance: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': 'Failed to load attendance data'
+        }), 500
+
+@faculty_bp.route('/students/<string:student_id>/grades', methods=['GET'])
+@jwt_required()
+@faculty_required
+def get_student_grades(student_id):
+    """Get grade data for a specific student"""
+    try:
+        # Get current user
+        user_id = get_jwt_identity()
+        user = get_user_by_id(user_id)
+        
+        if not user or not user.faculty:
+            return jsonify({
+                'status': 'error',
+                'message': 'Faculty profile not found'
+            }), 404
+        
+        faculty_id = user.faculty.faculty_id
+        
+        # Get student grade data
+        grade_data = faculty_service.get_student_grade_detail(faculty_id, student_id)
+        
+        return jsonify({
+            'status': 'success',
+            'data': grade_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting student grades: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': 'Failed to load grade data'
+        }), 500
+
+@faculty_bp.route('/students/<string:student_id>/interventions', methods=['GET'])
+@jwt_required()
+@faculty_required
+def get_student_interventions(student_id):
+    """Get intervention history for a specific student"""
+    try:
+        # Get current user
+        user_id = get_jwt_identity()
+        user = get_user_by_id(user_id)
+        
+        if not user or not user.faculty:
+            return jsonify({
+                'status': 'error',
+                'message': 'Faculty profile not found'
+            }), 404
+        
+        faculty_id = user.faculty.faculty_id
+        
+        # Get student interventions
+        interventions = faculty_service.get_student_interventions(faculty_id, student_id)
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'interventions': interventions
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting student interventions: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': 'Failed to load intervention data'
+        }), 500
+
+    
