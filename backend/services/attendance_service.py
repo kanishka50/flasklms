@@ -1,7 +1,7 @@
-# backend/services/attendance_service.py - FIXED VERSION
+# backend/services/attendance_service.py
 from backend.models.tracking import Attendance
-from backend.models.academic import Enrollment, CourseOffering, Course
-from backend.models.user import Student, User  # ✅ ADDED: Import User model
+from backend.models.academic import Enrollment,  CourseOffering, Course
+from backend.models.user import Student
 from backend.extensions import db
 from sqlalchemy import func, desc, and_, case
 from datetime import datetime, date, timedelta
@@ -39,8 +39,7 @@ class AttendanceService:
                 existing_attendance.check_in_time = check_in_time
                 existing_attendance.notes = notes
                 existing_attendance.recorded_by = recorded_by
-                # ✅ ADDED: Set updated timestamp
-                existing_attendance.created_at = datetime.utcnow()  # This acts as updated_at
+                existing_attendance.updated_at = datetime.utcnow()
                 attendance_record = existing_attendance
                 logger.info(f"Updated attendance record {existing_attendance.attendance_id}")
             else:
@@ -68,7 +67,7 @@ class AttendanceService:
     
     @staticmethod
     def bulk_mark_attendance(attendance_data, recorded_by=None):
-        """Mark attendance for multiple students"""
+        """Mark attendance for multiple students with better error handling"""
         results = []
         successful_count = 0
         
@@ -99,7 +98,7 @@ class AttendanceService:
                             'enrollment_id': data['enrollment_id'],
                             'success': True,
                             'attendance_id': result.attendance_id,
-                            'action': 'created'  # ✅ SIMPLIFIED: Remove complex update detection
+                            'action': 'updated' if result.updated_at != result.created_at else 'created'
                         })
                         successful_count += 1
                     else:
@@ -131,42 +130,37 @@ class AttendanceService:
             if attendance_date is None:
                 attendance_date = date.today()
             
-            logger.info(f"Getting roster for offering {offering_id} on {attendance_date}")
-            
-            # ✅ FIXED: Join with User table to get email and use correct field name
+            # Base query for enrolled students
             roster_query = db.session.query(
                 Enrollment.enrollment_id,
                 Enrollment.student_id,
                 Student.first_name,
                 Student.last_name,
-                User.email,  # ✅ FIXED: Get email from User table
+                Student.email,
                 Attendance.attendance_id,
                 Attendance.status.label('attendance_status'),
                 Attendance.check_in_time,
                 Attendance.notes
             ).select_from(Enrollment).join(
                 Student, Enrollment.student_id == Student.student_id
-            ).join(
-                User, User.user_id == Student.user_id  # ✅ FIXED: Join with User table
             ).outerjoin(
                 Attendance, and_(
                     Attendance.enrollment_id == Enrollment.enrollment_id,
                     Attendance.attendance_date == attendance_date
                 )
             ).filter(
-                Enrollment.offering_id == offering_id,  # ✅ FIXED: Use offering_id not course_offering_id
-                Enrollment.enrollment_status == 'enrolled'
+                Enrollment.course_offering_id == offering_id,
+                Enrollment.status == 'enrolled'
             ).order_by(Student.last_name, Student.first_name)
             
             roster_data = roster_query.all()
-            logger.info(f"Found {len(roster_data)} students in roster")
             
             roster = []
             for student in roster_data:
                 roster.append({
                     'enrollment_id': student.enrollment_id,
                     'student_id': student.student_id,
-                    'name': f"{student.first_name} {student.last_name}",  # ✅ ADDED: Combined name for frontend
+                    'student_name': f"{student.first_name} {student.last_name}",
                     'first_name': student.first_name,
                     'last_name': student.last_name,
                     'email': student.email,
@@ -176,7 +170,6 @@ class AttendanceService:
                     'notes': student.notes
                 })
             
-            logger.info(f"Successfully built roster with {len(roster)} students")
             return roster
             
         except Exception as e:
@@ -195,12 +188,11 @@ class AttendanceService:
             if not start_date:
                 start_date = end_date - timedelta(days=30)  # Last 30 days
             
-            # ✅ FIXED: Use offering_id and join with User table
+            # Get summary data
             summary_query = db.session.query(
                 Student.student_id,
                 Student.first_name,
                 Student.last_name,
-                User.email,  # ✅ ADDED: Get email from User table
                 func.count(Attendance.attendance_id).label('total_classes'),
                 func.sum(case([(Attendance.status == 'present', 1)], else_=0)).label('present_count'),
                 func.sum(case([(Attendance.status == 'absent', 1)], else_=0)).label('absent_count'),
@@ -209,15 +201,13 @@ class AttendanceService:
             ).select_from(Enrollment).join(
                 Student, Enrollment.student_id == Student.student_id
             ).join(
-                User, User.user_id == Student.user_id  # ✅ ADDED: Join with User table
-            ).join(
                 Attendance, Attendance.enrollment_id == Enrollment.enrollment_id
             ).filter(
-                Enrollment.offering_id == offering_id,  # ✅ FIXED: Use offering_id
+                Enrollment.course_offering_id == offering_id,
                 Attendance.attendance_date >= start_date,
                 Attendance.attendance_date <= end_date
             ).group_by(
-                Student.student_id, Student.first_name, Student.last_name, User.email
+                Student.student_id, Student.first_name, Student.last_name
             ).all()
             
             summary = []
@@ -229,7 +219,6 @@ class AttendanceService:
                 summary.append({
                     'student_id': record.student_id,
                     'student_name': f"{record.first_name} {record.last_name}",
-                    'email': record.email,  # ✅ ADDED: Include email
                     'total_classes': total,
                     'present_count': present,
                     'absent_count': record.absent_count or 0,
@@ -250,7 +239,6 @@ class AttendanceService:
     def get_student_attendance(student_id, course_offering_id=None, start_date=None, end_date=None):
         """Get attendance records for a specific student"""
         try:
-            # ✅ FIXED: Use offering_id in filter
             query = db.session.query(
                 Attendance.attendance_date,
                 Attendance.status,
@@ -258,11 +246,11 @@ class AttendanceService:
                 Attendance.notes,
                 Course.course_code,
                 Course.course_name,
-                CourseOffering.section_number
+                CourseOffering.section
             ).select_from(Attendance).join(
                 Enrollment, Attendance.enrollment_id == Enrollment.enrollment_id
             ).join(
-                CourseOffering, Enrollment.offering_id == CourseOffering.offering_id  # ✅ FIXED: Use offering_id
+                CourseOffering, Enrollment.course_offering_id == CourseOffering.offering_id
             ).join(
                 Course, CourseOffering.course_id == Course.course_id
             ).filter(
@@ -271,7 +259,7 @@ class AttendanceService:
             
             # Apply filters
             if course_offering_id:
-                query = query.filter(Enrollment.offering_id == course_offering_id)  # ✅ FIXED: Use offering_id
+                query = query.filter(Enrollment.course_offering_id == course_offering_id)
             
             if start_date:
                 query = query.filter(Attendance.attendance_date >= start_date)
@@ -293,7 +281,7 @@ class AttendanceService:
                     'notes': record.notes,
                     'course_code': record.course_code,
                     'course_name': record.course_name,
-                    'section': record.section_number
+                    'section': record.section
                 })
             
             return records
@@ -306,7 +294,6 @@ class AttendanceService:
     def get_student_attendance_stats(student_id, course_offering_id=None):
         """Get attendance statistics for a student"""
         try:
-            # ✅ FIXED: Use offering_id in filter
             query = db.session.query(
                 func.count(Attendance.attendance_id).label('total_classes'),
                 func.sum(case([(Attendance.status == 'present', 1)], else_=0)).label('present_count'),
@@ -320,7 +307,7 @@ class AttendanceService:
             )
             
             if course_offering_id:
-                query = query.filter(Enrollment.offering_id == course_offering_id)  # ✅ FIXED: Use offering_id
+                query = query.filter(Enrollment.course_offering_id == course_offering_id)
             
             result = query.first()
             
@@ -364,28 +351,6 @@ class AttendanceService:
             db.session.rollback()
             logger.error(f"Error deleting attendance: {str(e)}")
             return False
-    
-    @staticmethod
-    def get_course_attendance_dates(offering_id, limit=30):
-        """Get list of dates when attendance was taken for a course"""
-        try:
-            # ✅ FIXED: Use offering_id in query
-            dates_query = db.session.query(
-                func.distinct(Attendance.attendance_date)
-            ).join(
-                Enrollment, Attendance.enrollment_id == Enrollment.enrollment_id
-            ).filter(
-                Enrollment.offering_id == offering_id  # ✅ FIXED: Use offering_id
-            ).order_by(
-                desc(Attendance.attendance_date)
-            ).limit(limit)
-            
-            dates = [row[0] for row in dates_query.all()]
-            return dates
-            
-        except Exception as e:
-            logger.error(f"Error getting attendance dates: {str(e)}")
-            return []
 
 # Create service instance
 attendance_service = AttendanceService()
