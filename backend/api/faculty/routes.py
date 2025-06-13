@@ -763,21 +763,36 @@ def enter_bulk_grades():
 @jwt_required()
 @faculty_required
 def get_assessment_roster(assessment_id):
-    """Get roster for grade entry"""
+    """Get roster for grade entry with security verification"""
     try:
-        # TODO: Verify faculty teaches this course
+        # Get current user and verify faculty status
+        user_id = get_jwt_identity()
+        user = get_user_by_id(user_id)
         
-        roster_data = assessment_service.get_assessment_roster(assessment_id)
+        if not user or not user.faculty:
+            logger.warning(f"User {user_id} attempted to access assessment roster without faculty status")
+            return error_response('Faculty profile not found', 404)
+        
+        faculty_id = user.faculty.faculty_id
+        
+        # FIXED: Pass faculty_id for security verification
+        roster_data = assessment_service.get_assessment_roster(assessment_id, faculty_id)
         
         if roster_data:
             return api_response(roster_data, 'Assessment roster retrieved successfully')
         else:
-            return error_response('Assessment not found', 404)
+            # Check if assessment exists at all
+            assessment = Assessment.query.get(assessment_id)
+            if not assessment:
+                return error_response('Assessment not found', 404)
+            else:
+                return error_response('You do not have permission to access this assessment', 403)
         
     except Exception as e:
         logger.error(f"Error getting assessment roster: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return error_response('Failed to get assessment roster', 500)
-
     
 @faculty_bp.route('/courses/<int:offering_id>/students', methods=['GET'])
 @jwt_required()
@@ -997,38 +1012,22 @@ def update_profile():
 def get_submission_details(submission_id):
     """Get detailed submission information"""
     try:
-        # Get submission with student and assessment details
-        submission = db.session.query(
-            AssessmentSubmission,
-            User.first_name,
-            User.last_name,
-            Student.student_id,
-            Assessment.title,
-            Assessment.max_score
-        ).join(
-            Enrollment, Enrollment.enrollment_id == AssessmentSubmission.enrollment_id
-        ).join(
-            Student, Student.student_id == Enrollment.student_id
-        ).join(
-            User, User.user_id == Student.user_id
-        ).join(
-            Assessment, Assessment.assessment_id == AssessmentSubmission.assessment_id
-        ).filter(
-            AssessmentSubmission.submission_id == submission_id
-        ).first()
+        # Get current user
+        user_id = get_jwt_identity()
+        user = get_user_by_id(user_id)
         
-        if not submission:
-            return error_response('Submission not found', 404)
+        if not user or not user.faculty:
+            return error_response('Faculty profile not found', 404)
         
-        # TODO: Verify faculty teaches this course
+        faculty_id = user.faculty.faculty_id
         
-        submission_data = submission[0].to_dict()
-        submission_data['student_name'] = f"{submission[1]} {submission[2]}"
-        submission_data['student_id'] = submission[3]
-        submission_data['assessment_title'] = submission[4]
-        submission_data['max_score'] = float(submission[5])
+        # Get submission with security check
+        submission_data = assessment_service.get_submission_details(submission_id, faculty_id)
         
-        return api_response(submission_data, 'Submission details retrieved successfully')
+        if submission_data:
+            return api_response(submission_data, 'Submission details retrieved successfully')
+        else:
+            return error_response('Submission not found or access denied', 404)
         
     except Exception as e:
         logger.error(f"Error getting submission details: {str(e)}")
@@ -1117,3 +1116,30 @@ def get_assessment_submissions(assessment_id):
     except Exception as e:
         logger.error(f"Error getting submissions: {str(e)}")
         return error_response('Failed to get submissions', 500)
+    
+@faculty_bp.route('/submissions/<int:submission_id>/download', methods=['GET'])
+@jwt_required()
+@faculty_required
+def download_submission_file(submission_id):
+    """Download submission file"""
+    try:
+        # Get current user
+        user_id = get_jwt_identity()
+        user = get_user_by_id(user_id)
+        
+        if not user or not user.faculty:
+            return error_response('Faculty profile not found', 404)
+        
+        faculty_id = user.faculty.faculty_id
+        
+        # Get file download response
+        file_response = assessment_service.download_submission_file(submission_id, faculty_id)
+        
+        if file_response:
+            return file_response
+        else:
+            return error_response('File not found or access denied', 404)
+        
+    except Exception as e:
+        logger.error(f"Error downloading submission file: {str(e)}")
+        return error_response('Failed to download file', 500)

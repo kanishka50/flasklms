@@ -322,38 +322,98 @@ function escapeHtml(text) {
     }
     
     async function loadAssessmentRoster() {
-        try {
-            console.log('Loading assessment roster for ID:', currentAssessmentId);
-            const response = await apiClient.get(`faculty/assessments/${currentAssessmentId}/roster`);
-            console.log('Roster response:', response);
+    try {
+        console.log('Loading assessment roster for ID:', currentAssessmentId);
+        
+        // Add loading state
+        showLoadingState();
+        
+        const response = await apiClient.get(`faculty/assessments/${currentAssessmentId}/roster`);
+        console.log('Roster response:', response);
+        
+        if (response.status === 'success' && response.data) {
+            assessmentData = response.data.assessment;
+            rosterData = response.data.roster;
             
-            if (response.status === 'success' && response.data) {
-                assessmentData = response.data.assessment;
-                rosterData = response.data.roster;
-                
-                displayAssessmentInfo();
-                displayRoster();
-                updateStats();
-            } else {
-                showError('Failed to load assessment data');
+            // Validate data before displaying
+            if (!assessmentData || !Array.isArray(rosterData)) {
+                throw new Error('Invalid response data structure');
             }
-        } catch (error) {
-            console.error('Error loading assessment roster:', error);
-            if (error.response && error.response.status === 404) {
-                showError('Assessment not found');
-            } else if (error.response && error.response.status === 401) {
-                showError('Session expired. Please log in again.');
-                setTimeout(() => {
-                    window.location.href = '../login.html';
-                }, 2000);
-            } else {
-                showError('Failed to load assessment data. Please try again.');
-            }
-        } finally {
-            loadingIndicator.classList.add('hidden');
-            mainContent.classList.remove('hidden');
+            
+            displayAssessmentInfo();
+            displayRoster();
+            updateStats();
+            hideLoadingState(); // This will now properly show the content
+        } else {
+            throw new Error(response.message || 'Failed to load assessment data');
         }
+    } catch (error) {
+        console.error('Error loading assessment roster:', error);
+        hideLoadingState(); // Make sure to hide loading even on error
+        
+        // Enhanced error handling with specific messages
+        if (error.response) {
+            const status = error.response.status;
+            const message = error.response.data?.message || 'Unknown error occurred';
+            
+            switch (status) {
+                case 401:
+                    showError('Session expired. Please log in again.');
+                    setTimeout(() => {
+                        window.location.href = '../login.html';
+                    }, 2000);
+                    break;
+                case 403:
+                    showError('You do not have permission to access this assessment. Please contact your administrator.');
+                    break;
+                case 404:
+                    showError('Assessment not found. It may have been deleted or moved.');
+                    break;
+                case 500:
+                    showError('Server error occurred. Please try again later or contact support.');
+                    break;
+                default:
+                    showError(message);
+            }
+        } else if (error.message) {
+            showError(error.message);
+        } else {
+            showError('Failed to load assessment data. Please check your connection and try again.');
+        }
+        
+        // Optionally redirect back to assessments list after error
+        setTimeout(() => {
+            if (confirm('Would you like to return to the assessments list?')) {
+                window.location.href = 'assessments.html';
+            }
+        }, 3000);
     }
+}
+
+
+function showLoadingState() {
+    // Show the main loading indicator
+    if (loadingIndicator) {
+        loadingIndicator.classList.remove('hidden');
+    }
+    
+    // Hide the main content
+    if (mainContent) {
+        mainContent.classList.add('hidden');
+    }
+}
+
+function hideLoadingState() {
+    // Hide the main loading indicator
+    if (loadingIndicator) {
+        loadingIndicator.classList.add('hidden');
+    }
+    
+    // Show the main content
+    if (mainContent) {
+        mainContent.classList.remove('hidden');
+    }
+}
     
     function displayAssessmentInfo() {
         if (!assessmentData) return;
@@ -392,7 +452,9 @@ function escapeHtml(text) {
     // Calculate grade letter
     const gradeLetter = calculateGradeLetter(student.percentage);
     
-    // Determine submission status
+    // FIXED: Properly determine submission status
+    // OLD (BROKEN): const hasSubmission = student.submission_id && (student.submission_text || student.has_file);
+    // NEW (FIXED): Check for submission_id and actual content
     const hasSubmission = student.submission_id && (student.submission_text || student.has_file);
     
     row.innerHTML = `
@@ -410,10 +472,21 @@ function escapeHtml(text) {
         <td class="px-6 py-4 whitespace-nowrap">
             ${hasSubmission ? `
                 <button onclick="viewSubmission(${student.enrollment_id})" 
-                        class="text-blue-600 hover:text-blue-900 text-sm font-medium">
+                        class="text-blue-600 hover:text-blue-900 text-sm font-medium flex items-center">
+                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                    </svg>
                     View Submission
                 </button>
-            ` : '<span class="text-gray-400 text-sm">No submission</span>'}
+            ` : `
+                <span class="text-gray-400 text-sm flex items-center">
+                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    No submission
+                </span>
+            `}
         </td>
         <td class="px-6 py-4 whitespace-nowrap">
             <input type="number" 
@@ -424,8 +497,7 @@ function escapeHtml(text) {
                    min="0" 
                    max="${assessmentData.max_score}" 
                    step="0.5"
-                   placeholder="0"
-                   ${!hasSubmission ? 'disabled' : ''}>
+                   placeholder="0">
             <span class="text-sm text-gray-500 ml-1">/ ${assessmentData.max_score}</span>
         </td>
         <td class="px-6 py-4 whitespace-nowrap">
@@ -452,7 +524,7 @@ function escapeHtml(text) {
         </td>
     `;
     
-    // Add event listeners to inputs (rest of the function remains the same)
+    // Add event listeners (keep this part exactly as it is in your original code)
     const scoreInput = row.querySelector('.score-input');
     const feedbackInput = row.querySelector('.feedback-input');
     
@@ -475,8 +547,7 @@ function escapeHtml(text) {
     });
     
     return row;
-}
-        
+}  
      
     
     function handleScoreChange(input, student, row) {
@@ -780,10 +851,45 @@ function escapeHtml(text) {
         }, 2000);
     }
     
-    function showError(message) {
-        console.error(message);
-        alert(message); // Simple error display for now
+    // Enhanced error display function
+function showError(message) {
+    // Create error container if it doesn't exist
+    let errorContainer = document.getElementById('errorContainer');
+    if (!errorContainer) {
+        errorContainer = document.createElement('div');
+        errorContainer.id = 'errorContainer';
+        errorContainer.className = 'fixed top-4 right-4 z-50';
+        document.body.appendChild(errorContainer);
     }
+    
+    // Create error message element
+    const errorElement = document.createElement('div');
+    errorElement.className = 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-2 shadow-lg max-w-md';
+    errorElement.innerHTML = `
+        <div class="flex items-center justify-between">
+            <div class="flex items-center">
+                <svg class="h-5 w-5 text-red-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <span class="text-sm">${message}</span>
+            </div>
+            <button class="ml-4 text-red-500 hover:text-red-700" onclick="this.parentElement.parentElement.remove()">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+        </div>
+    `;
+    
+    errorContainer.appendChild(errorElement);
+    
+    // Auto-remove after 10 seconds
+    setTimeout(() => {
+        if (errorElement.parentNode) {
+            errorElement.remove();
+        }
+    }, 10000);
+}
 
 
      window.viewSubmission = viewSubmission;

@@ -7,6 +7,9 @@ from backend.extensions import db
 from datetime import datetime, date
 from sqlalchemy import func, and_, desc
 import logging
+import os
+from flask import send_file, current_app
+from werkzeug.utils import secure_filename
 
 logger = logging.getLogger(__name__)
 
@@ -148,32 +151,43 @@ class AssessmentService:
             return []
     
     @staticmethod
-    def get_assessment_roster(assessment_id):
-        """Get roster with submission details for grade entry"""
+    def get_assessment_roster(assessment_id, faculty_id=None):
+        """Get roster of students for grade entry with submission information"""
         try:
+            # Get the assessment and course info
             assessment = Assessment.query.get(assessment_id)
             if not assessment:
+                logger.warning(f"Assessment {assessment_id} not found")
                 return None
             
-            # Get all enrolled students with their submissions
-            # FIXED: Using Student.first_name and Student.last_name instead of User.first_name/last_name
-            roster = db.session.query(
-                Enrollment.enrollment_id,
+            # SECURITY CHECK: Verify faculty teaches this course
+            if faculty_id:
+                offering = CourseOffering.query.get(assessment.offering_id)
+                if not offering or offering.faculty_id != faculty_id:
+                    logger.warning(f"Faculty {faculty_id} attempted to access assessment {assessment_id} they don't teach")
+                    return None
+            
+            # IMPROVED QUERY: Include submission information
+            students = db.session.query(
                 Student.student_id,
-                Student.first_name,  # Changed from User.first_name
-                Student.last_name,   # Changed from User.last_name
+                Student.first_name,
+                Student.last_name,
+                Enrollment.enrollment_id,
                 AssessmentSubmission.submission_id,
                 AssessmentSubmission.score,
                 AssessmentSubmission.percentage,
-                AssessmentSubmission.feedback,
                 AssessmentSubmission.submission_date,
-                AssessmentSubmission.submission_type,
-                AssessmentSubmission.file_path  # Changed from has_file since it's not a column
-            ).join(
-                Student, Student.student_id == Enrollment.student_id
-            ).outerjoin(
+                AssessmentSubmission.is_late,
+                AssessmentSubmission.feedback,
+                # NEW: Include submission content info
+                AssessmentSubmission.submission_text,
+                AssessmentSubmission.file_path,
+                AssessmentSubmission.file_name
+            ).select_from(Enrollment)\
+            .join(Student, Student.student_id == Enrollment.student_id)\
+            .outerjoin(
                 AssessmentSubmission,
-                and_(
+                db.and_(
                     AssessmentSubmission.enrollment_id == Enrollment.enrollment_id,
                     AssessmentSubmission.assessment_id == assessment_id
                 )
@@ -182,29 +196,74 @@ class AssessmentService:
                 Enrollment.enrollment_status == 'enrolled'
             ).order_by(Student.last_name, Student.first_name).all()
             
-            # Format roster data
-            roster_data = []
-            for r in roster:
-                student_data = {
-                    'enrollment_id': r.enrollment_id,
-                    'student_id': r.student_id,
-                    'first_name': r.first_name,
-                    'last_name': r.last_name,
-                    'name': f"{r.first_name} {r.last_name}",
-                    'submission_id': r.submission_id,
-                    'score': float(r.score) if r.score else None,
-                    'percentage': float(r.percentage) if r.percentage else None,
-                    'feedback': r.feedback,
-                    'submission_date': r.submission_date.isoformat() if r.submission_date else None,
-                    'submission_type': r.submission_type,
-                    'has_file': bool(r.file_path) if r.submission_id else False,  # Check file_path to determine if has file
-                    'status': 'graded' if r.score is not None else ('submitted' if r.submission_id else 'not_submitted')
-                }
-                roster_data.append(student_data)
+            # Process results with enhanced submission info
+            roster = []
+            for student in students:
+                try:
+                    # Safe type conversion with validation
+                    score_val = None
+                    percentage_val = None
+                    
+                    if student.score is not None:
+                        try:
+                            score_val = float(student.score)
+                        except (ValueError, TypeError) as e:
+                            logger.error(f"Invalid score value for student {student.student_id}: {student.score}")
+                            score_val = None
+                    
+                    if student.percentage is not None:
+                        try:
+                            percentage_val = float(student.percentage)
+                        except (ValueError, TypeError) as e:
+                            logger.error(f"Invalid percentage value for student {student.student_id}: {student.percentage}")
+                            percentage_val = None
+                    
+                    # Safe date conversion
+                    submission_date_str = None
+                    if student.submission_date:
+                        try:
+                            submission_date_str = student.submission_date.isoformat()
+                        except AttributeError:
+                            logger.error(f"Invalid submission_date for student {student.student_id}")
+                    
+                    # NEW: Determine submission content availability
+                    has_text = bool(student.submission_text)
+                    has_file = bool(student.file_path)
+                    
+                    roster.append({
+                        'student_id': student.student_id,
+                        'enrollment_id': student.enrollment_id,
+                        'name': f"{student.first_name} {student.last_name}",
+                        'first_name': student.first_name,
+                        'last_name': student.last_name,
+                        'submission_id': student.submission_id,
+                        'score': score_val,
+                        'percentage': percentage_val,
+                        'submission_date': submission_date_str,
+                        'is_late': bool(student.is_late) if student.is_late is not None else False,
+                        'feedback': student.feedback,
+                        # NEW: Include submission content info
+                        'submission_text': student.submission_text,
+                        'has_file': has_file,
+                        'file_name': student.file_name,
+                        'status': 'graded' if score_val is not None else ('submitted' if student.submission_id else 'not_submitted')
+                    })
+                    
+                except Exception as student_error:
+                    logger.error(f"Error processing student {student.student_id}: {str(student_error)}")
+                    continue
+            
+            # Safe assessment data conversion
+            assessment_data = {
+                'assessment_id': assessment.assessment_id,
+                'title': assessment.title,
+                'max_score': float(assessment.max_score) if assessment.max_score else 0.0,
+                'due_date': assessment.due_date.isoformat() if assessment.due_date else None
+            }
             
             return {
-                'assessment': assessment.to_dict(),
-                'roster': roster_data
+                'assessment': assessment_data,
+                'roster': roster
             }
             
         except Exception as e:
@@ -726,6 +785,138 @@ class AssessmentService:
             db.session.rollback()
             logger.error(f"Error creating submission: {str(e)}")
             return None, str(e)
+        
+
+    @staticmethod
+    def get_submission_details(submission_id, faculty_id=None):
+        """Get detailed submission information with security check"""
+        try:
+            # Get submission with related data
+            submission = db.session.query(
+                AssessmentSubmission.submission_id,
+                AssessmentSubmission.submission_date,
+                AssessmentSubmission.submission_text,
+                AssessmentSubmission.file_path,
+                AssessmentSubmission.file_name,
+                AssessmentSubmission.file_size,
+                AssessmentSubmission.mime_type,
+                AssessmentSubmission.score,
+                AssessmentSubmission.percentage,
+                AssessmentSubmission.feedback,
+                AssessmentSubmission.is_late,
+                Assessment.assessment_id,
+                Assessment.title.label('assessment_title'),
+                Assessment.max_score,
+                CourseOffering.faculty_id
+            ).join(
+                Assessment, Assessment.assessment_id == AssessmentSubmission.assessment_id
+            ).join(
+                CourseOffering, CourseOffering.offering_id == Assessment.offering_id
+            ).filter(
+                AssessmentSubmission.submission_id == submission_id
+            ).first()
+            
+            if not submission:
+                logger.warning(f"Submission {submission_id} not found")
+                return None
+            
+            # Security check: Verify faculty teaches this course
+            if faculty_id and submission.faculty_id != faculty_id:
+                logger.warning(f"Faculty {faculty_id} attempted to access submission {submission_id} they don't teach")
+                return None
+            
+            # Determine submission type
+            has_text = bool(submission.submission_text)
+            has_file = bool(submission.file_path)
+            
+            if has_text and has_file:
+                submission_type = 'both'
+            elif has_file:
+                submission_type = 'file'
+            elif has_text:
+                submission_type = 'text'
+            else:
+                submission_type = 'none'
+            
+            return {
+                'submission_id': submission.submission_id,
+                'submission_date': submission.submission_date.isoformat() if submission.submission_date else None,
+                'submission_text': submission.submission_text,
+                'submission_type': submission_type,
+                'has_file': has_file,
+                'file_name': submission.file_name,
+                'file_size': submission.file_size,
+                'mime_type': submission.mime_type,
+                'score': float(submission.score) if submission.score is not None else None,
+                'percentage': float(submission.percentage) if submission.percentage is not None else None,
+                'feedback': submission.feedback,
+                'is_late': bool(submission.is_late),
+                'assessment': {
+                    'assessment_id': submission.assessment_id,
+                    'title': submission.assessment_title,
+                    'max_score': float(submission.max_score)
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting submission details: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return None
+        
+    @staticmethod
+    def download_submission_file(submission_id, faculty_id=None):
+        """Download submission file with security check"""
+        try:
+            # Get submission with security check
+            submission = db.session.query(
+                AssessmentSubmission.file_path,
+                AssessmentSubmission.file_name,
+                AssessmentSubmission.mime_type,
+                CourseOffering.faculty_id
+            ).join(
+                Assessment, Assessment.assessment_id == AssessmentSubmission.assessment_id
+            ).join(
+                CourseOffering, CourseOffering.offering_id == Assessment.offering_id
+            ).filter(
+                AssessmentSubmission.submission_id == submission_id
+            ).first()
+            
+            if not submission:
+                logger.warning(f"Submission {submission_id} not found")
+                return None
+            
+            # Security check: Verify faculty teaches this course
+            if faculty_id and submission.faculty_id != faculty_id:
+                logger.warning(f"Faculty {faculty_id} attempted to download submission {submission_id} they don't teach")
+                return None
+            
+            if not submission.file_path:
+                logger.warning(f"No file attached to submission {submission_id}")
+                return None
+            
+            # Construct full file path
+            upload_folder = current_app.config.get('UPLOAD_FOLDER', 'uploads')
+            full_path = os.path.join(upload_folder, submission.file_path)
+            
+            # Check if file exists
+            if not os.path.exists(full_path):
+                logger.error(f"File not found on disk: {full_path}")
+                return None
+            
+            # Send file
+            return send_file(
+                full_path,
+                as_attachment=True,
+                download_name=submission.file_name,
+                mimetype=submission.mime_type
+            )
+            
+        except Exception as e:
+            logger.error(f"Error downloading submission file: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return None
 
 
 # Create service instance
