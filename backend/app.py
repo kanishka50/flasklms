@@ -4,6 +4,7 @@ from config import config
 from backend.extensions import db, login_manager, jwt, cors, mail, migrate
 from backend.utils.cors import configure_cors
 from flask_jwt_extended import JWTManager
+from flask import send_from_directory
 # REMOVE THIS LINE: from backend.api.student.routes import student_bp
 
 def create_app(config_name=None):
@@ -40,6 +41,11 @@ def create_app(config_name=None):
     
     # Register commands
     register_commands(app)
+    
+    @app.route('/uploads/<path:filename>')
+    def uploaded_file(filename):
+        from flask import send_from_directory
+        return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
     
     app.logger.info(f"Application started in {config_name} mode")
 
@@ -150,3 +156,4 @@ def register_commands(app):
     # Skip command registration for now
     app.logger.info("Commands registration skipped")
     pass
+

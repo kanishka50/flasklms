@@ -16,6 +16,8 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 });
 
+document.getElementById('photoUpload')?.addEventListener('change', handlePhotoUpload);
+
 async function loadProfile() {
     try {
         showLoading();
@@ -74,6 +76,55 @@ async function handleProfileUpdate(e) {
         }
     } catch (error) {
         showError('Failed to update profile');
+    } finally {
+        hideLoading();
+    }
+}
+
+
+
+async function handlePhotoUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+        showError('File size must be less than 5MB');
+        return;
+    }
+    
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+        showError('Please upload a valid image file (JPEG, PNG, or GIF)');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('photo', file);
+    
+    try {
+        showLoading();
+        
+        const response = await fetch('/api/student/upload-photo', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+            },
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.status === 'success') {
+            showSuccess('Photo uploaded successfully');
+            // Update photo preview
+            document.getElementById('profilePhoto').src = data.data.photo_url;
+        } else {
+            showError(data.message || 'Failed to upload photo');
+        }
+    } catch (error) {
+        showError('Failed to upload photo');
     } finally {
         hideLoading();
     }

@@ -74,6 +74,9 @@ class Student(db.Model):
     status = db.Column(db.Enum('active', 'inactive', 'graduated', 'withdrawn'), default='active')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    profile_photo = db.Column(db.String(255), nullable=True)
+    phone_number = db.Column(db.String(20), nullable=True)
+    address = db.Column(db.Text, nullable=True)
     
     # Relationships
     enrollments = db.relationship('Enrollment', backref='student', lazy=True)

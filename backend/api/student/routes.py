@@ -12,6 +12,13 @@ from backend.utils.api import api_response, error_response
 from backend.models import User
 from datetime import datetime
 import logging
+import os
+from werkzeug.utils import secure_filename
+
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 logger = logging.getLogger(__name__)
 
@@ -625,3 +632,49 @@ def drop_course():
     except Exception as e:
         logger.error(f"Error dropping course: {str(e)}")
         return error_response('Failed to drop course', 500)
+    
+    @student_bp.route('/upload-photo', methods=['POST'])
+    @jwt_required()
+    @student_required
+    def upload_profile_photo():
+        """Upload profile photo"""
+        try:
+            user_id = get_jwt_identity()
+            user = get_user_by_id(user_id)
+            
+            if not user or not user.student:
+                return error_response('Student profile not found', 404)
+            
+            if 'photo' not in request.files:
+                return error_response('No photo file provided', 400)
+            
+            file = request.files['photo']
+            
+            if file.filename == '':
+                return error_response('No file selected', 400)
+            
+            if file and allowed_file(file.filename):
+                # Generate unique filename
+                filename = secure_filename(f"student_{user.student.student_id}_{file.filename}")
+                
+                # Create upload directory if it doesn't exist
+                upload_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'profiles')
+                os.makedirs(upload_dir, exist_ok=True)
+                
+                # Save file
+                filepath = os.path.join(upload_dir, filename)
+                file.save(filepath)
+                
+                # Update student profile with photo path
+                user.student.profile_photo = f"profiles/{filename}"
+                db.session.commit()
+                
+                return api_response({
+                    'photo_url': f"/uploads/profiles/{filename}"
+                }, 'Photo uploaded successfully')
+            
+            return error_response('Invalid file type', 400)
+            
+        except Exception as e:
+            logger.error(f"Error uploading photo: {str(e)}")
+            return error_response('Failed to upload photo', 500)

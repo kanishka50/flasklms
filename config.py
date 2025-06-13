@@ -46,6 +46,7 @@ class Config:
     UPLOAD_FOLDER = os.path.join(basedir, 'uploads')
     ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls', 'txt', 'pdf'}
     
+    
     # API
     API_TITLE = 'University Grade Prediction System API'
     API_VERSION = '1.0'
