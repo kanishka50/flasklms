@@ -30,131 +30,163 @@
 </head>
 <body class="bg-gray-100">
     <!-- Navigation -->
-    <nav class="bg-gray-800 text-white shadow-lg sticky top-0 z-50">
-    <div class="container mx-auto px-4">
-        <div class="flex justify-between items-center py-4">
-            <!-- Logo/Brand -->
-            <div class="flex items-center">
-                <a href="dashboard.html" class="text-xl font-bold text-white hover:text-gray-200 transition-colors">
-                    <i class="fas fa-graduation-cap mr-2"></i>
-                    Student Portal
-                </a>
-            </div>
-            
-            <!-- Desktop Navigation Links -->
-            <div class="hidden md:flex items-center space-x-1">
-                <a href="dashboard.html" 
-                   class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-all duration-200 flex items-center"
-                   data-page="dashboard">
-                    <i class="fas fa-tachometer-alt mr-2"></i>
-                    Dashboard
-                </a>
-                <a href="courses.html" 
-                   class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-all duration-200 flex items-center"
-                   data-page="courses">
-                    <i class="fas fa-book mr-2"></i>
-                    My Courses
-                </a>
-                <a href="attendance.html" 
-                   class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-all duration-200 flex items-center"
-                   data-page="attendance">
-                    <i class="fas fa-calendar-check mr-2"></i>
-                    Attendance
-                </a>
-                <a href="assessments.html" 
-                   class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-all duration-200 flex items-center"
-                   data-page="assessments">
-                    <i class="fas fa-clipboard-check mr-2"></i>
-                    Assessments
-                </a>
-                <a href="grades.html" 
-                   class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-all duration-200 flex items-center"
-                   data-page="grades">
-                    <i class="fas fa-chart-line mr-2"></i>
-                    Grades
-                </a>
-                <a href="predictions.html" 
-                   class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-all duration-200 flex items-center"
-                   data-page="predictions">
-                    <i class="fas fa-crystal-ball mr-2"></i>
-                    Predictions
-                </a>
-            </div>
-            
-            <!-- User Menu -->
-            <div class="flex items-center space-x-4">
-                <!-- User Info -->
-                <div class="hidden md:flex items-center space-x-3">
-                    <div class="flex items-center space-x-2">
-                        <div class="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center">
-                            <i class="fas fa-user text-sm"></i>
+        <nav class="bg-gray-800 text-white shadow-lg sticky top-0 z-50">
+            <div class="container mx-auto px-4">
+                <div class="flex justify-between items-center py-4">
+                    <!-- Logo/Brand -->
+                    <div class="flex items-center">
+                        <a href="dashboard.html" class="text-xl font-bold text-white hover:text-gray-200 transition-colors">
+                            <i class="fas fa-graduation-cap mr-2"></i>
+                            Student Portal
+                        </a>
+                    </div>
+                    
+                    <!-- Desktop Navigation Links -->
+                    <div class="hidden md:flex items-center space-x-1">
+                        <a href="dashboard.html" 
+                           class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-all duration-200 flex items-center"
+                           data-page="dashboard">
+                            <i class="fas fa-tachometer-alt mr-2"></i>
+                            Dashboard
+                        </a>
+                        <a href="courses.html" 
+                           class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-all duration-200 flex items-center"
+                           data-page="courses">
+                            <i class="fas fa-book mr-2"></i>
+                            My Courses
+                        </a>
+                        <a href="attendance.html" 
+                           class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-all duration-200 flex items-center"
+                           data-page="attendance">
+                            <i class="fas fa-calendar-check mr-2"></i>
+                            Attendance
+                        </a>
+                        <a href="assessments.html" 
+                           class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-all duration-200 flex items-center"
+                           data-page="assessments">
+                            <i class="fas fa-clipboard-check mr-2"></i>
+                            Assessments
+                        </a>
+                        <a href="grades.html" 
+                           class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-all duration-200 flex items-center"
+                           data-page="grades">
+                            <i class="fas fa-chart-line mr-2"></i>
+                            Grades
+                        </a>
+                        <a href="predictions.html" 
+                           class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-all duration-200 flex items-center"
+                           data-page="predictions">
+                            <i class="fas fa-crystal-ball mr-2"></i>
+                            Predictions
+                        </a>
+                    </div>
+                    
+                    <!-- User Dropdown Menu -->
+                    <div class="flex items-center space-x-4">
+                        <!-- Desktop User Dropdown -->
+                        <div class="hidden md:block relative">
+                            <button id="userMenuBtn" 
+                                    class="flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-all duration-200">
+                                <div class="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                                    <i class="fas fa-user text-sm text-white"></i>
+                                </div>
+                                <span id="username" class="max-w-xs truncate">Loading...</span>
+                                <i class="fas fa-chevron-down text-xs ml-1"></i>
+                            </button>
+                            
+                            <!-- Dropdown Menu -->
+                            <div id="userDropdown" class="hidden absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl py-1 z-50 dropdown-enter">
+                                <!-- User Info Header -->
+                                <div class="px-4 py-3 border-b border-gray-200">
+                                    <p class="text-sm font-medium text-gray-900" id="dropdownUsername">Student Name</p>
+                                    <!-- <p class="text-sm text-gray-500" id="dropdownEmail">student@university.edu</p> -->
+                                </div>
+                                
+                                <!-- Menu Items -->
+                                <a href="profile.html" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors">
+                                    <i class="fas fa-user-circle mr-3 text-gray-400"></i>
+                                    My Profile
+                                </a>
+                                <hr class="my-1">
+                                
+                                <button id="logoutBtn" class="w-full flex items-center px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors text-left">
+                                    <i class="fas fa-sign-out-alt mr-3"></i>
+                                    Logout
+                                </button>
+                            </div>
                         </div>
-                        <span id="username" class="text-sm text-gray-300">Loading...</span>
+                        
+                        <!-- Mobile menu button -->
+                        <button id="mobileMenuBtn" 
+                                class="md:hidden p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-white">
+                            <i class="fas fa-bars text-lg"></i>
+                        </button>
                     </div>
                 </div>
                 
-                <!-- Logout Button -->
-                <button id="logoutBtn" 
-                        class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center">
-                    <i class="fas fa-sign-out-alt mr-2"></i>
-                    Logout
-                </button>
-                
-                <!-- Mobile menu button -->
-                <button id="mobileMenuBtn" 
-                        class="md:hidden p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-white">
-                    <i class="fas fa-bars text-lg"></i>
-                </button>
-            </div>
-        </div>
-        
-        <!-- Mobile Navigation Menu -->
-        <div id="mobileMenu" class="md:hidden hidden pb-4">
-            <div class="space-y-1">
-                <a href="dashboard.html" 
-                   class="mobile-nav-link block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
-                   data-page="dashboard">
-                    <i class="fas fa-tachometer-alt mr-3"></i>Dashboard
-                </a>
-                <a href="courses.html" 
-                   class="mobile-nav-link block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
-                   data-page="courses">
-                    <i class="fas fa-book mr-3"></i>My Courses
-                </a>
-                <a href="attendance.html" 
-                   class="mobile-nav-link block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
-                   data-page="attendance">
-                    <i class="fas fa-calendar-check mr-3"></i>Attendance
-                </a>
-                <a href="assessments.html" 
-                   class="mobile-nav-link block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
-                   data-page="assessments">
-                    <i class="fas fa-clipboard-check mr-3"></i>Assessments
-                </a>
-                <a href="grades.html" 
-                   class="mobile-nav-link block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
-                   data-page="grades">
-                    <i class="fas fa-chart-line mr-3"></i>Grades
-                </a>
-                <a href="predictions.html" 
-                   class="mobile-nav-link block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
-                   data-page="predictions">
-                    <i class="fas fa-crystal-ball mr-3"></i>Predictions
-                </a>
-                
-                <!-- Mobile User Info -->
-                <div class="border-t border-gray-700 pt-4 mt-4">
-                    <div class="flex items-center px-3 py-2">
-                        <div class="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center mr-3">
-                            <i class="fas fa-user text-sm"></i>
+                <!-- Mobile Navigation Menu -->
+                <div id="mobileMenu" class="md:hidden hidden pb-4">
+                    <!-- Mobile User Info -->
+                    <div class="px-3 py-2 mb-3 border-b border-gray-700">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                                <i class="fas fa-user text-white"></i>
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium text-white" id="mobileUsername">Loading...</p>
+                                <!-- <p class="text-xs text-gray-400" id="mobileEmail">student@university.edu</p> -->
+                            </div>
                         </div>
-                        <span id="mobileUsername" class="text-sm text-gray-300">Loading...</span>
+                    </div>
+                    
+                    <!-- Mobile Navigation Links -->
+                    <div class="space-y-1">
+                        <a href="dashboard.html" 
+                           class="mobile-nav-link block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+                           data-page="dashboard">
+                            <i class="fas fa-tachometer-alt mr-3"></i>Dashboard
+                        </a>
+                        <a href="courses.html" 
+                           class="mobile-nav-link block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+                           data-page="courses">
+                            <i class="fas fa-book mr-3"></i>My Courses
+                        </a>
+                        <a href="attendance.html" 
+                           class="mobile-nav-link block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+                           data-page="attendance">
+                            <i class="fas fa-calendar-check mr-3"></i>Attendance
+                        </a>
+                        <a href="assessments.html" 
+                           class="mobile-nav-link block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+                           data-page="assessments">
+                            <i class="fas fa-clipboard-check mr-3"></i>Assessments
+                        </a>
+                        <a href="grades.html" 
+                           class="mobile-nav-link block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+                           data-page="grades">
+                            <i class="fas fa-chart-line mr-3"></i>Grades
+                        </a>
+                        <a href="predictions.html" 
+                           class="mobile-nav-link block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+                           data-page="predictions">
+                            <i class="fas fa-crystal-ball mr-3"></i>Predictions
+                        </a>
+                        
+                        <!-- Mobile User Menu Items -->
+                        <div class="border-t border-gray-700 pt-4 mt-4 space-y-1">
+                            <a href="profile.html" 
+                               class="mobile-nav-link block px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
+                                <i class="fas fa-user-circle mr-3"></i>My Profile
+                            </a>
+                            <button id="mobileLogoutBtn" 
+                                    class="w-full text-left mobile-nav-link block px-3 py-2 rounded-md text-base font-medium text-red-400 hover:bg-red-900 hover:text-white transition-colors">
+                                <i class="fas fa-sign-out-alt mr-3"></i>Logout
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
-</nav>
+        </nav>
 
     <!-- Main Content -->
     <div class="container mx-auto px-4 py-6">

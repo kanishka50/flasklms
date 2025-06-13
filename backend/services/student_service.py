@@ -21,6 +21,33 @@ class StudentService:
         except Exception as e:
             logger.error(f"Error getting student: {str(e)}")
             return None
+        
+    @staticmethod
+    def update_student_profile(student_id, profile_data):
+        """Update student profile"""
+        try:
+            student = Student.query.get(student_id)
+            if not student:
+                return None, "Student not found"
+            
+            # Update allowed fields
+            allowed_fields = [
+                'first_name', 'last_name', 'date_of_birth', 
+                'gender', 'program_code', 'year_of_study'
+            ]
+            
+            for field in allowed_fields:
+                if field in profile_data:
+                    setattr(student, field, profile_data[field])
+            
+            db.session.commit()
+            return student, None
+            
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error updating student profile: {str(e)}")
+            return None, str(e)
+    
     
     @staticmethod
     def get_enrolled_courses(student_id, term_id=None):

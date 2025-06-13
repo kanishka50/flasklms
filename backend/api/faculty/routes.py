@@ -8,6 +8,9 @@ from backend.middleware.auth_middleware import faculty_required
 from backend.utils.api import api_response, error_response
 from datetime import datetime, date
 import logging
+from backend.extensions import db 
+from backend.models import User, CourseOffering 
+
 
 logger = logging.getLogger(__name__)
 
@@ -627,3 +630,129 @@ def get_dashboard_summary():
             'status': 'error',
             'message': 'Failed to load dashboard summary'
         }), 500
+    
+@faculty_bp.route('/profile', methods=['GET'])
+@jwt_required()
+@faculty_required
+def get_profile():
+    """Get faculty profile"""
+    try:
+        # Get current user
+        user_id = get_jwt_identity()
+        user = get_user_by_id(user_id)
+        
+        if not user or not user.faculty:
+            return error_response('Faculty profile not found', 404)
+        
+        faculty = user.faculty
+        
+        # Build profile response - using actual field names from the model
+        profile_data = {
+            'user': {
+                'user_id': user.user_id,
+                'username': user.username,
+                'email': user.email,
+                'last_login': user.last_login.isoformat() if user.last_login else None
+            },
+            'faculty': {
+                'faculty_id': faculty.faculty_id,
+                'first_name': faculty.first_name,
+                'last_name': faculty.last_name,
+                'department': faculty.department,
+                'position': faculty.position,
+                'office_location': faculty.office_location,
+                'phone_number': faculty.phone,  # Map phone to phone_number for frontend compatibility
+                'specialization': None,  # Not in model, return None
+                'hire_date': None,  # Not in model, return None
+                'status': 'active'  # Not in model, return default
+            }
+        }
+        
+        return api_response(profile_data, 'Profile retrieved successfully')
+        
+    except Exception as e:
+        logger.error(f"Error getting faculty profile: {str(e)}")
+        return error_response('Failed to retrieve profile', 500)
+
+    
+@faculty_bp.route('/profile', methods=['PUT'])
+@jwt_required()
+@faculty_required
+def update_profile():
+    """Update faculty profile"""
+    try:
+        # Get current user
+        user_id = get_jwt_identity()
+        user = get_user_by_id(user_id)
+        
+        if not user or not user.faculty:
+            return error_response('Faculty profile not found', 404)
+        
+        data = request.get_json()
+        if not data:
+            return error_response('No data provided', 400)
+        
+        faculty = user.faculty
+        
+        # Map frontend field names to model field names
+        field_mapping = {
+            'first_name': 'first_name',
+            'last_name': 'last_name',
+            'department': 'department',
+            'position': 'position',
+            'office_location': 'office_location',
+            'phone_number': 'phone'  # Map phone_number from frontend to phone in model
+        }
+        
+        # Update faculty fields
+        for frontend_field, model_field in field_mapping.items():
+            if frontend_field in data:
+                value = data[frontend_field]
+                # Handle empty strings - convert to None for database
+                if value == '':
+                    value = None
+                setattr(faculty, model_field, value)
+        
+        # Update user email if provided
+        if 'email' in data:
+            email = data['email']
+            if email and email != user.email:
+                # Check if email already exists
+                existing = User.query.filter_by(email=email).first()
+                if existing:
+                    return error_response('Email already in use', 400)
+                user.email = email
+        
+        # Save changes
+        db.session.commit()
+        
+        # Return updated profile data
+        profile_data = {
+            'user': {
+                'user_id': user.user_id,
+                'username': user.username,
+                'email': user.email,
+                'last_login': user.last_login.isoformat() if user.last_login else None
+            },
+            'faculty': {
+                'faculty_id': faculty.faculty_id,
+                'first_name': faculty.first_name,
+                'last_name': faculty.last_name,
+                'department': faculty.department,
+                'position': faculty.position,
+                'office_location': faculty.office_location,
+                'phone_number': faculty.phone,  # Map phone to phone_number for frontend
+                'specialization': None,  # Not in model
+                'hire_date': None,  # Not in model
+                'status': 'active'  # Not in model
+            }
+        }
+        
+        logger.info(f"Profile updated successfully for faculty: {faculty.faculty_id}")
+        
+        return api_response(profile_data, 'Profile updated successfully')
+        
+    except Exception as e:
+        logger.error(f"Error updating faculty profile: {str(e)}")
+        db.session.rollback()
+        return error_response('Failed to update profile', 500)

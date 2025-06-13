@@ -12,6 +12,7 @@ from backend.utils.api import api_response, error_response
 from backend.models import User
 from datetime import datetime
 import logging
+from backend.extensions import db 
 import os
 from werkzeug.utils import secure_filename
 
@@ -508,28 +509,80 @@ def update_profile():
         student = user.student
         
         # Update allowed fields only
-        allowed_student_fields = ['first_name', 'last_name', 'date_of_birth', 'gender']
+        allowed_student_fields = ['first_name', 'last_name', 'date_of_birth', 'gender', 
+                                  'program_code', 'year_of_study']
         allowed_user_fields = ['email']
         
         # Update student fields
         for field in allowed_student_fields:
             if field in data:
-                setattr(student, field, data[field])
+                value = data[field]
+                
+                # Handle empty strings - convert to None for database
+                if value == '':
+                    value = None
+                
+                if field == 'date_of_birth' and value:
+                    # Parse date string to date object
+                    try:
+                        date_obj = datetime.strptime(value, '%Y-%m-%d').date()
+                        setattr(student, field, date_obj)
+                    except ValueError:
+                        return error_response('Invalid date format. Use YYYY-MM-DD', 400)
+                elif field == 'year_of_study' and value is not None:
+                    # Ensure year_of_study is an integer
+                    try:
+                        setattr(student, field, int(value))
+                    except ValueError:
+                        return error_response('Year of study must be a number', 400)
+                else:
+                    setattr(student, field, value)
         
         # Update user fields
         for field in allowed_user_fields:
             if field in data:
+                value = data[field]
+                
+                # Don't update email if it's empty
+                if field == 'email' and not value:
+                    continue
+                    
                 # Check if email already exists
-                if field == 'email' and data[field] != user.email:
-                    existing = User.query.filter_by(email=data[field]).first()
+                if field == 'email' and value != user.email:
+                    existing = User.query.filter_by(email=value).first()
                     if existing:
                         return error_response('Email already in use', 400)
-                setattr(user, field, data[field])
+                setattr(user, field, value)
         
         # Save changes
         db.session.commit()
         
-        return api_response({'message': 'Profile updated successfully'})
+        # Return updated profile data
+        profile_data = {
+            'user': {
+                'user_id': user.user_id,
+                'username': user.username,
+                'email': user.email,
+                'last_login': user.last_login.isoformat() if user.last_login else None
+            },
+            'student': {
+                'student_id': student.student_id,
+                'first_name': student.first_name,
+                'last_name': student.last_name,
+                'date_of_birth': student.date_of_birth.isoformat() if student.date_of_birth else None,
+                'gender': student.gender,
+                'program_code': student.program_code,
+                'year_of_study': student.year_of_study,
+                'enrollment_date': student.enrollment_date.isoformat() if student.enrollment_date else None,
+                'expected_graduation': student.expected_graduation.isoformat() if student.expected_graduation else None,
+                'gpa': float(student.gpa) if student.gpa else None,
+                'status': student.status
+            }
+        }
+        
+        logger.info(f"Profile updated successfully for student: {student.student_id}")
+        
+        return api_response(profile_data, 'Profile updated successfully')
         
     except Exception as e:
         logger.error(f"Error updating profile: {str(e)}")
@@ -678,3 +731,4 @@ def drop_course():
         except Exception as e:
             logger.error(f"Error uploading photo: {str(e)}")
             return error_response('Failed to upload photo', 500)
+        

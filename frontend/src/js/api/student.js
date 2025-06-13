@@ -76,5 +76,61 @@ const studentApi = {
             console.error('Error fetching dashboard:', error);
             throw error;
         }
+    },
+
+    async getCourses(termId = null) {
+        try {
+            let endpoint = 'student/courses';
+            if (termId) {
+                endpoint += `?term_id=${termId}`;
+            }
+            const response = await apiClient.get(endpoint);
+            return response;
+        } catch (error) {
+            console.error('Error fetching courses:', error);
+            throw error;
+        }
+    },
+    
+    // Get attendance data
+    async getAttendance(courseId = null) {
+        try {
+            let endpoint = 'student/attendance';
+            if (courseId) {
+                endpoint += `?course_id=${courseId}`;
+            }
+            const response = await apiClient.get(endpoint);
+            return response;
+        } catch (error) {
+            console.error('Error fetching attendance:', error);
+            throw error;
+        }
+    },
+    
+    // Get assessments
+    async getAssessments(courseId = null) {
+        try {
+            let endpoint = 'student/assessments';
+            if (courseId) {
+                endpoint += `?course_id=${courseId}`;
+            }
+            const response = await apiClient.get(endpoint);
+            return response;
+        } catch (error) {
+            console.error('Error fetching assessments:', error);
+            throw error;
+        }
+    },
+    
+    // Get grade predictions
+    async getPredictions() {
+        try {
+            const response = await apiClient.get('student/predictions');
+            return response;
+        } catch (error) {
+            console.error('Error fetching predictions:', error);
+            throw error;
+        }
     }
+
 };
