@@ -441,53 +441,32 @@ class AssessmentService:
             return None
     
     @staticmethod
-    def update_assessment(assessment_id, title=None, max_score=None, due_date=None, weight=None, description=None, is_published=None, updated_by=None):
+    def update_assessment(assessment_id, **update_data):
         """Update an existing assessment"""
         try:
             assessment = Assessment.query.get(assessment_id)
             if not assessment:
                 return None, "Assessment not found"
             
-            # Check if there are submissions and restrict certain updates
-            submission_count = AssessmentSubmission.query.filter_by(
-                assessment_id=assessment_id
-            ).count()
+            # Update allowed fields
+            allowed_fields = ['title', 'max_score', 'due_date', 'weight', 'description', 'type_id']
             
-            # Update fields if provided
-            if title is not None:
-                assessment.title = title
-            
-            if max_score is not None:
-                # Don't allow max_score changes if there are graded submissions
-                graded_submissions = AssessmentSubmission.query.filter_by(
-                    assessment_id=assessment_id
-                ).filter(AssessmentSubmission.score.isnot(None)).count()
-                
-                if graded_submissions > 0 and float(max_score) != float(assessment.max_score):
-                    return None, "Cannot change max score when submissions have been graded"
-                assessment.max_score = max_score
-            
-            if due_date is not None:
-                # Handle date parsing same as create_assessment
-                if isinstance(due_date, str) and due_date:
-                    try:
-                        if 'T' in due_date:
-                            due_date = datetime.fromisoformat(due_date)
-                        else:
-                            due_date = datetime.strptime(due_date, '%Y-%m-%d %H:%M')
-                    except ValueError as e:
-                        logger.error(f"Error parsing due_date '{due_date}': {str(e)}")
-                        due_date = None
-                assessment.due_date = due_date
-            
-            if weight is not None:
-                assessment.weight = weight
-            
-            if description is not None:
-                assessment.description = description
-            
-            if is_published is not None:
-                assessment.is_published = is_published
+            for field in allowed_fields:
+                if field in update_data:
+                    if field == 'due_date' and isinstance(update_data[field], str) and update_data[field]:
+                        try:
+                            # Try ISO format first (what frontend sends)
+                            if 'T' in update_data[field]:
+                                update_data[field] = datetime.fromisoformat(update_data[field].replace('Z', '+00:00'))
+                            else:
+                                # Fallback to simple format
+                                update_data[field] = datetime.strptime(update_data[field], '%Y-%m-%d %H:%M')
+                        except ValueError as e:
+                            logger.error(f"Error parsing due_date '{update_data[field]}': {str(e)}")
+                            # If parsing fails, skip updating this field
+                            continue
+                            
+                    setattr(assessment, field, update_data[field])
             
             db.session.commit()
             logger.info(f"Assessment updated: {assessment.title} (ID: {assessment_id})")
@@ -496,9 +475,53 @@ class AssessmentService:
         except Exception as e:
             db.session.rollback()
             logger.error(f"Error updating assessment: {str(e)}")
-            import traceback
-            traceback.print_exc()
             return None, str(e)
+        
+    @staticmethod
+    def get_assessment_details(assessment_id):
+        """Get detailed assessment information for editing"""
+        try:
+            assessment = db.session.query(
+                Assessment.assessment_id,
+                Assessment.offering_id,
+                Assessment.type_id,
+                Assessment.title,
+                Assessment.max_score,
+                Assessment.due_date,
+                Assessment.weight,
+                Assessment.description,
+                Assessment.is_published,
+                CourseOffering.course_id,
+                Course.course_code,
+                Course.course_name
+            ).join(
+                CourseOffering, Assessment.offering_id == CourseOffering.offering_id
+            ).join(
+                Course, CourseOffering.course_id == Course.course_id
+            ).filter(
+                Assessment.assessment_id == assessment_id
+            ).first()
+            
+            if assessment:
+                return {
+                    'assessment_id': assessment.assessment_id,
+                    'offering_id': assessment.offering_id,
+                    'course_id': assessment.course_id,
+                    'course_code': assessment.course_code,
+                    'course_name': assessment.course_name,
+                    'type_id': assessment.type_id,
+                    'title': assessment.title,
+                    'max_score': float(assessment.max_score),
+                    'due_date': assessment.due_date.isoformat() if assessment.due_date else None,
+                    'weight': float(assessment.weight) if assessment.weight else None,
+                    'description': assessment.description,
+                    'is_published': assessment.is_published
+                }
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error getting assessment details: {str(e)}")
+            return None
     
     @staticmethod
     def get_assessment_by_id(assessment_id):

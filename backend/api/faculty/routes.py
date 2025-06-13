@@ -264,6 +264,57 @@ def get_assessments():
             'status': 'error',
             'message': 'Failed to load assessments'
         }), 500
+    
+@faculty_bp.route('/assessments/<int:assessment_id>', methods=['GET'])
+@jwt_required()
+@faculty_required
+def get_assessment(assessment_id):
+    """Get assessment details for editing"""
+    try:
+        # TODO: Verify faculty teaches this course
+        
+        assessment = assessment_service.get_assessment_details(assessment_id)
+        
+        if assessment:
+            return api_response(assessment, 'Assessment details retrieved successfully')
+        else:
+            return error_response('Assessment not found', 404)
+        
+    except Exception as e:
+        logger.error(f"Error getting assessment: {str(e)}")
+        return error_response('Failed to get assessment details', 500)
+    
+@faculty_bp.route('/assessments/<int:assessment_id>', methods=['PUT'])
+@jwt_required()
+@faculty_required
+def update_assessment(assessment_id):
+    """Update an existing assessment"""
+    try:
+        data = request.get_json()
+        
+        # Get current user for tracking
+        user_id = get_jwt_identity()
+        
+        # TODO: Verify faculty teaches this course
+        
+        # Update assessment
+        assessment, error = assessment_service.update_assessment(
+            assessment_id=assessment_id,
+            **data
+        )
+        
+        if assessment:
+            return api_response({
+                'assessment_id': assessment.assessment_id,
+                'title': assessment.title
+            }, 'Assessment updated successfully')
+        else:
+            return error_response(error or 'Failed to update assessment', 400)
+        
+    except Exception as e:
+        logger.error(f"Error updating assessment: {str(e)}")
+        return error_response('Failed to update assessment', 500)
+
 
 @faculty_bp.route('/analytics', methods=['GET'])
 @jwt_required()
@@ -570,7 +621,8 @@ def create_assessment():
         traceback.print_exc()
         return error_response('Failed to create assessment', 500)
 
-@faculty_bp.route('/assessments/<int:offering_id>', methods=['GET'])
+ # Changed route
+@faculty_bp.route('/courses/<int:offering_id>/assessments', methods=['GET'])
 @jwt_required()
 @faculty_required
 def get_course_assessments(offering_id):
@@ -646,14 +698,63 @@ def enter_single_grade():
         user = get_user_by_id(user_id)
         graded_by = user.faculty.faculty_id if user and user.faculty else str(user_id)
         
-        # For now, return a placeholder response since the service method may not exist yet
-        return api_response({
-            'message': 'Grade entry functionality not yet implemented'
-        }, 'Grade entry endpoint available')
+        # Enter the grade
+        submission, error = assessment_service.enter_grade(
+            enrollment_id=data['enrollment_id'],
+            assessment_id=data['assessment_id'],
+            score=data['score'],
+            feedback=data.get('feedback'),
+            graded_by=graded_by
+        )
+        
+        if submission:
+            return api_response({
+                'submission_id': submission.submission_id,
+                'score': float(submission.score),
+                'percentage': float(submission.percentage)
+            }, 'Grade entered successfully')
+        else:
+            return error_response(error or 'Failed to enter grade', 400)
         
     except Exception as e:
         logger.error(f"Error entering grade: {str(e)}")
         return error_response('Failed to enter grade', 500)
+    
+@faculty_bp.route('/assessments/grades/bulk', methods=['POST'])
+@jwt_required()
+@faculty_required
+def enter_bulk_grades():
+    """Enter grades for multiple students"""
+    try:
+        data = request.get_json()
+        
+        if 'grades' not in data or not isinstance(data['grades'], list):
+            return error_response('Invalid data format. Expected "grades" array', 400)
+        
+        # Get current user for tracking
+        user_id = get_jwt_identity()
+        user = get_user_by_id(user_id)
+        graded_by = user.faculty.faculty_id if user and user.faculty else str(user_id)
+        
+        # Enter grades
+        results = assessment_service.bulk_enter_grades(data['grades'], graded_by)
+        
+        # Count successes
+        successful = sum(1 for r in results if r['success'])
+        failed = len(results) - successful
+        
+        return api_response({
+            'results': results,
+            'summary': {
+                'total': len(results),
+                'successful': successful,
+                'failed': failed
+            }
+        }, f'Bulk grading completed: {successful} successful, {failed} failed')
+        
+    except Exception as e:
+        logger.error(f"Error in bulk grading: {str(e)}")
+        return error_response('Failed to process bulk grading', 500)
     
 @faculty_bp.route('/assessments/<int:assessment_id>/roster', methods=['GET'])
 @jwt_required()
@@ -663,17 +764,17 @@ def get_assessment_roster(assessment_id):
     try:
         # TODO: Verify faculty teaches this course
         
-        # For now, return a placeholder response since the service method may not exist yet
-        return api_response({
-            'assessment_id': assessment_id,
-            'roster': [],
-            'message': 'Roster functionality not yet implemented'
-        }, 'Assessment roster retrieved successfully')
+        roster_data = assessment_service.get_assessment_roster(assessment_id)
+        
+        if roster_data:
+            return api_response(roster_data, 'Assessment roster retrieved successfully')
+        else:
+            return error_response('Assessment not found', 404)
         
     except Exception as e:
         logger.error(f"Error getting assessment roster: {str(e)}")
         return error_response('Failed to get assessment roster', 500)
-    
+
     
 @faculty_bp.route('/courses/<int:offering_id>/students', methods=['GET'])
 @jwt_required()

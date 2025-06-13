@@ -74,41 +74,41 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    async function loadAllAssessments() {
-        try {
-            showLoading(true);
-            
-            console.log('Loading all assessments...');
-            allAssessments = [];
-            
-            // Load assessments for each course
-            for (const course of coursesList) {
-                try {
-                    const response = await apiClient.get(`faculty/assessments/${course.offering_id}`);
-                    if (response.status === 'success' && response.data.assessments) {
-                        response.data.assessments.forEach(assessment => {
-                            allAssessments.push({
-                                ...assessment,
-                                course_code: course.course_code,
-                                course_name: course.course_name,
-                                offering_id: course.offering_id
-                            });
-                        });
-                    }
-                } catch (error) {
-                    console.error(`Error loading assessments for course ${course.course_code}:`, error);
+    // Find the loadAllAssessments function and update the API call
+async function loadAllAssessments() {
+    try {
+        showLoading(true);
+        console.log('Loading all assessments...');
+        allAssessments = [];
+        
+        for (const course of coursesList) {
+            try {
+                // CHANGE THIS LINE - Update the URL pattern
+                const response = await apiClient.get(`faculty/courses/${course.offering_id}/assessments`);
+                
+                if (response.status === 'success' && response.data.assessments) {
+                    const courseAssessments = response.data.assessments.map(assessment => ({
+                        ...assessment,
+                        course_code: course.course_code,
+                        course_name: course.course_name,
+                        offering_id: course.offering_id
+                    }));
+                    allAssessments = [...allAssessments, ...courseAssessments];
                 }
+            } catch (error) {
+                console.error(`Error loading assessments for course ${course.course_code}:`, error);
             }
-            
-            displayAssessments(allAssessments);
-            
-        } catch (error) {
-            console.error('Error loading assessments:', error);
-            showError('Failed to load assessments. Please refresh the page.');
-        } finally {
-            showLoading(false);
         }
+        
+        filterAssessments();
+        showLoading(false);
+        
+    } catch (error) {
+        console.error('Error loading assessments:', error);
+        showError('Failed to load assessments');
+        showLoading(false);
     }
+}
     
     function populateCourseFilter() {
         courseFilter.innerHTML = '<option value="">All Courses</option>';

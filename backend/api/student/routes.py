@@ -686,10 +686,10 @@ def drop_course():
         logger.error(f"Error dropping course: {str(e)}")
         return error_response('Failed to drop course', 500)
     
-    @student_bp.route('/upload-photo', methods=['POST'])
-    @jwt_required()
-    @student_required
-    def upload_profile_photo():
+@student_bp.route('/upload-photo', methods=['POST'])
+@jwt_required()
+@student_required
+def upload_profile_photo():
         """Upload profile photo"""
         try:
             user_id = get_jwt_identity()
@@ -732,3 +732,86 @@ def drop_course():
             logger.error(f"Error uploading photo: {str(e)}")
             return error_response('Failed to upload photo', 500)
         
+@student_bp.route('/assessments/<int:assessment_id>', methods=['GET'])
+@jwt_required()
+@student_required
+def get_assessment_detail(assessment_id):
+    """Get detailed assessment information for submission"""
+    try:
+        user_id = get_jwt_identity()
+        user = get_user_by_id(user_id)
+        
+        if not user or not user.student:
+            return error_response('Student profile not found', 404)
+        
+        student_id = user.student.student_id
+        
+        # Get assessment details with submission status
+        assessment = assessment_service.get_student_assessment_detail(student_id, assessment_id)
+        
+        if assessment:
+            return api_response(assessment, 'Assessment details retrieved successfully')
+        else:
+            return error_response('Assessment not found or not available to you', 404)
+            
+    except Exception as e:
+        logger.error(f"Error getting assessment detail: {str(e)}")
+        return error_response('Failed to get assessment details', 500)
+    
+@student_bp.route('/assessments/<int:assessment_id>/submit', methods=['POST'])
+@jwt_required()
+@student_required
+def submit_assessment(assessment_id):
+    """Submit an assessment (text submission or file reference)"""
+    try:
+        user_id = get_jwt_identity()
+        user = get_user_by_id(user_id)
+        
+        if not user or not user.student:
+            return error_response('Student profile not found', 404)
+        
+        student_id = user.student.student_id
+        data = request.get_json()
+        
+        # Create submission
+        submission = assessment_service.create_submission(
+            student_id=student_id,
+            assessment_id=assessment_id,
+            submission_text=data.get('submission_text'),
+            file_url=data.get('file_url')
+        )
+        
+        if submission:
+            return api_response({
+                'submission_id': submission.submission_id,
+                'submitted_at': submission.submission_date.isoformat()
+            }, 'Assessment submitted successfully')
+        else:
+            return error_response('Failed to submit assessment', 500)
+            
+    except Exception as e:
+        logger.error(f"Error submitting assessment: {str(e)}")
+        return error_response('Failed to submit assessment', 500)
+
+@student_bp.route('/grades/summary', methods=['GET'])
+@jwt_required()
+@student_required
+def get_grades_summary():
+    """Get overall grades summary for the student"""
+    try:
+        user_id = get_jwt_identity()
+        user = get_user_by_id(user_id)
+        
+        if not user or not user.student:
+            return error_response('Student profile not found', 404)
+        
+        student_id = user.student.student_id
+        
+        # Get grades summary
+        summary = grade_service.get_student_grades_summary(student_id)
+        
+        return api_response(summary, 'Grades summary retrieved successfully')
+        
+    except Exception as e:
+        logger.error(f"Error getting grades summary: {str(e)}")
+        return error_response('Failed to get grades summary', 500)
