@@ -1,411 +1,249 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // Elements
-    const usernameElement = document.getElementById('username');
-    const logoutBtn = document.getElementById('logoutBtn');
+    // Check authentication
+    if (!authApi.isLoggedIn() || !authApi.hasRole('student')) {
+        window.location.href = '../login.html';
+        return;
+    }
+
+    // DOM elements
     const courseFilter = document.getElementById('courseFilter');
+    const typeFilter = document.getElementById('typeFilter');
     const statusFilter = document.getElementById('statusFilter');
-    const refreshBtn = document.getElementById('refreshBtn');
-    const loadingIndicator = document.getElementById('loadingIndicator');
-    const assessmentsContainer = document.getElementById('assessmentsContainer');
-    const noAssessments = document.getElementById('noAssessments');
-    
-    // Stats elements
-    const totalAssessments = document.getElementById('totalAssessments');
-    const gradedAssessments = document.getElementById('gradedAssessments');
-    const pendingAssessments = document.getElementById('pendingAssessments');
-    const averageGrade = document.getElementById('averageGrade');
-    
-    // Modal elements
-    const assessmentModal = document.getElementById('assessmentModal');
-    const modalTitle = document.getElementById('modalTitle');
-    const modalContent = document.getElementById('modalContent');
-    const closeModal = document.getElementById('closeModal');
-    
+    const applyFilters = document.getElementById('applyFilters');
+    const assessmentsList = document.getElementById('assessmentsList');
+    const loadingState = document.getElementById('loadingState');
+    const assessmentsTable = document.getElementById('assessmentsTable');
+    const noDataState = document.getElementById('noDataState');
+    const logoutBtn = document.getElementById('logoutBtn');
+
+    // Summary counts
+    const totalCount = document.getElementById('totalCount');
+    const pendingCount = document.getElementById('pendingCount');
+    const submittedCount = document.getElementById('submittedCount');
+    const gradedCount = document.getElementById('gradedCount');
+
     // State
     let allAssessments = [];
-    let coursesList = [];
-    
+    let courses = new Set();
+
     // Initialize
-    init();
-    
-    function init() {
-        // Check authentication
-        if (!authApi.isLoggedIn()) {
-            window.location.href = '../login.html';
-            return;
-        }
-        
-        // Check user role
-        if (!authApi.hasRole('student')) {
-            window.location.href = '../login.html';
-            return;
-        }
-        
-        // Display username
-        const user = authApi.getCurrentUser();
-        if (user) {
-            usernameElement.textContent = user.username;
-        }
-        
-        // Load assessments
-        loadAllAssessments();
-        
-        // Set up event listeners
+    initialize();
+
+    async function initialize() {
         setupEventListeners();
+        await loadAssessments();
+        populateCourseFilter();
+        applyCurrentFilters();
     }
-    
+
     function setupEventListeners() {
-        // Logout
-        logoutBtn.addEventListener('click', function() {
-            authApi.logout();
-        });
+        applyFilters.addEventListener('click', applyCurrentFilters);
+        logoutBtn.addEventListener('click', () => authApi.logout());
         
-        // Refresh button
-        refreshBtn.addEventListener('click', function() {
-            loadAllAssessments();
-        });
-        
-        // Filter changes
-        courseFilter.addEventListener('change', filterAssessments);
-        statusFilter.addEventListener('change', filterAssessments);
-        
-        // Modal close
-        closeModal.addEventListener('click', function() {
-            assessmentModal.classList.add('hidden');
-        });
-        
-        // Close modal on outside click
-        assessmentModal.addEventListener('click', function(e) {
-            if (e.target === assessmentModal) {
-                assessmentModal.classList.add('hidden');
-            }
+        // Enter key on filters
+        [courseFilter, typeFilter, statusFilter].forEach(filter => {
+            filter.addEventListener('change', applyCurrentFilters);
         });
     }
-    
-    async function loadAllAssessments() {
+
+    async function loadAssessments() {
         try {
             showLoading(true);
             
-            console.log('Loading all student assessments...');
             const response = await apiClient.get('student/assessments/all');
-            console.log('Assessments response:', response);
+            console.log('Response from API:', response);
             
-            if (response.status === 'success' && response.data) {
-                coursesList = response.data.courses || [];
-                
-                // Flatten assessments for easier processing
+            if (response.status === 'success') {
+                // Flatten the course structure into assessment list
                 allAssessments = [];
-                coursesList.forEach(course => {
+                response.data.courses.forEach(course => {
                     course.assessments.forEach(assessment => {
+                        console.log('Assessment:', assessment); // ADD THIS
                         allAssessments.push({
                             ...assessment,
-                            course_info: {
-                                course_code: course.course_code,
-                                course_name: course.course_name
-                            }
+                            course_code: course.course_code,
+                            course_name: course.course_name
                         });
+                        courses.add(`${course.course_code}|${course.course_name}`);
                     });
                 });
                 
-                populateCourseFilter();
-                updateStats();
-                displayAssessments(coursesList);
+                showLoading(false);
             } else {
-                showNoAssessments();
+                throw new Error('Failed to load assessments');
             }
         } catch (error) {
             console.error('Error loading assessments:', error);
-            if (error.response && error.response.status === 401) {
-                authApi.logout();
-            } else {
-                showError('Failed to load assessments. Please refresh the page.');
-            }
-        } finally {
             showLoading(false);
+            showNoData();
         }
     }
-    
+
     function populateCourseFilter() {
         courseFilter.innerHTML = '<option value="">All Courses</option>';
         
-        coursesList.forEach(course => {
+        Array.from(courses).sort().forEach(courseStr => {
+            const [code, name] = courseStr.split('|');
             const option = document.createElement('option');
-            option.value = course.course_code;
-            option.textContent = `${course.course_code} - ${course.course_name}`;
+            option.value = code;
+            option.textContent = `${code} - ${name}`;
             courseFilter.appendChild(option);
         });
     }
-    
-    function updateStats() {
-        const total = allAssessments.length;
-        const graded = allAssessments.filter(a => a.status === 'graded').length;
-        const pending = total - graded;
-        
-        totalAssessments.textContent = total;
-        gradedAssessments.textContent = graded;
-        pendingAssessments.textContent = pending;
-        
-        // Calculate average percentage
-        const gradedWithScores = allAssessments.filter(a => a.percentage !== null);
-        if (gradedWithScores.length > 0) {
-            const avg = gradedWithScores.reduce((sum, a) => sum + a.percentage, 0) / gradedWithScores.length;
-            averageGrade.textContent = avg.toFixed(1) + '%';
+
+    function applyCurrentFilters() {
+        const courseValue = courseFilter.value;
+        const typeValue = typeFilter.value;
+        const statusValue = statusFilter.value;
+
+        let filtered = allAssessments;
+
+        // Apply course filter
+        if (courseValue) {
+            filtered = filtered.filter(a => a.course_code === courseValue);
+        }
+
+        // Apply type filter
+        if (typeValue) {
+            filtered = filtered.filter(a => a.type_name === typeValue);
+        }
+
+        // Apply status filter
+        if (statusValue) {
+            filtered = filtered.filter(a => {
+                const status = getAssessmentStatus(a);
+                return status === statusValue;
+            });
+        }
+
+        displayAssessments(filtered);
+        updateCounts(filtered);
+    }
+
+    function getAssessmentStatus(assessment) {
+        if (assessment.score !== null) {
+            return 'graded';
+        } else if (assessment.submission_date) {
+            return 'submitted';
+        } else if (assessment.due_date && new Date(assessment.due_date) < new Date()) {
+            return 'overdue';
         } else {
-            averageGrade.textContent = '-';
+            return 'not_submitted';
         }
     }
-    
-    function filterAssessments() {
-        const courseFilter_value = courseFilter.value;
-        const statusFilter_value = statusFilter.value;
-        
-        let filteredCourses = coursesList.map(course => ({
-            ...course,
-            assessments: course.assessments.filter(assessment => {
-                // Course filter
-                if (courseFilter_value && course.course_code !== courseFilter_value) {
-                    return false;
-                }
-                
-                // Status filter
-                if (statusFilter_value) {
-                    if (statusFilter_value === 'overdue') {
-                        const dueDate = new Date(assessment.due_date);
-                        const now = new Date();
-                        return assessment.status !== 'graded' && dueDate < now;
-                    } else {
-                        return assessment.status === statusFilter_value;
-                    }
-                }
-                
-                return true;
-            })
-        })).filter(course => course.assessments.length > 0);
-        
-        displayAssessments(filteredCourses);
-    }
-    
-    function displayAssessments(courses) {
-        if (!courses.length || courses.every(c => c.assessments.length === 0)) {
-            showNoAssessments();
+
+    function displayAssessments(assessments) {
+        if (assessments.length === 0) {
+            showNoData();
             return;
         }
-        
-        assessmentsContainer.innerHTML = '';
-        
-        courses.forEach(course => {
-            if (course.assessments.length === 0) return;
+
+        assessmentsList.innerHTML = assessments.map(assessment => {
+            const status = getAssessmentStatus(assessment);
+            const statusBadge = getStatusBadge(status);
+            const actionButton = getActionButton(assessment, status);
+            const dueDate = assessment.due_date ? new Date(assessment.due_date) : null;
             
-            const courseSection = createCourseSection(course);
-            assessmentsContainer.appendChild(courseSection);
-        });
-        
-        assessmentsContainer.classList.remove('hidden');
-        noAssessments.classList.add('hidden');
-    }
-    
-    function createCourseSection(course) {
-        const section = document.createElement('div');
-        section.className = 'bg-white rounded-lg shadow-md overflow-hidden';
-        
-        section.innerHTML = `
-            <div class="bg-gray-50 px-6 py-4 border-b">
-                <h3 class="text-lg font-semibold text-gray-900">${course.course_code} - ${course.course_name}</h3>
-                <p class="text-sm text-gray-600">${course.assessments.length} assessment(s)</p>
-            </div>
-            <div class="divide-y divide-gray-200">
-                ${course.assessments.map(assessment => createAssessmentCard(assessment)).join('')}
-            </div>
-        `;
-        
-        return section;
-    }
-    
-    function createAssessmentCard(assessment) {
-        const dueDate = assessment.due_date ? new Date(assessment.due_date) : null;
-        const isOverdue = dueDate && new Date() > dueDate && assessment.status !== 'graded';
-        
-        const statusBadge = getStatusBadge(assessment.status, isOverdue);
-        const gradeBadge = getGradeBadge(assessment.percentage);
-        
-        return `
-            <div class="p-6 hover:bg-gray-50 cursor-pointer assessment-card" data-assessment='${JSON.stringify(assessment)}'>
-                <div class="flex justify-between items-start">
-                    <div class="flex-1">
-                        <div class="flex items-center space-x-3 mb-2">
-                            <h4 class="text-lg font-medium text-gray-900">${assessment.title}</h4>
-                            ${statusBadge}
-                            ${gradeBadge}
+            return `
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm font-medium text-gray-900">${assessment.course_code}</div>
+                        <div class="text-sm text-gray-500">${assessment.course_name}</div>
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="text-sm font-medium text-gray-900">${assessment.title}</div>
+                        ${assessment.description ? `<div class="text-xs text-gray-500 mt-1">${assessment.description.substring(0, 50)}...</div>` : ''}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="text-sm text-gray-900">${assessment.type_name}</span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm text-gray-900">
+                            ${dueDate ? dueDate.toLocaleDateString() : 'No due date'}
                         </div>
-                        <div class="flex items-center space-x-4 text-sm text-gray-500 mb-2">
-                            <span class="flex items-center">
-                                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
-                                </svg>
-                                ${assessment.type_name}
-                            </span>
-                            ${dueDate ? `
-                                <span class="flex items-center ${isOverdue ? 'text-red-600' : ''}">
-                                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                                    </svg>
-                                    Due: ${dueDate.toLocaleDateString()} ${dueDate.toLocaleTimeString()}
-                                </span>
-                            ` : ''}
-                        </div>
-                        ${assessment.score !== null ? `
-                            <div class="text-sm text-gray-600">
-                                Score: <span class="font-medium">${assessment.score}/${assessment.max_score}</span>
-                                (${assessment.percentage?.toFixed(1)}%)
-                            </div>
-                        ` : `
-                            <div class="text-sm text-gray-600">
-                                Max Score: <span class="font-medium">${assessment.max_score}</span>
-                            </div>
-                        `}
-                    </div>
-                    <div class="text-right">
-                        <button class="text-blue-600 hover:text-blue-800 text-sm font-medium">
-                            View Details →
-                        </button>
-                    </div>
-                </div>
-            </div>
-        `;
+                        ${dueDate ? `<div class="text-xs text-gray-500">${dueDate.toLocaleTimeString()}</div>` : ''}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        ${statusBadge}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        ${assessment.score !== null ? 
+                            `<div class="text-sm font-medium">${assessment.score}/${assessment.max_score}</div>
+                             <div class="text-xs text-gray-500">${assessment.percentage.toFixed(1)}%</div>` : 
+                            '<span class="text-sm text-gray-500">-</span>'}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        ${actionButton}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        assessmentsTable.classList.remove('hidden');
+        noDataState.classList.add('hidden');
     }
-    
-    function getStatusBadge(status, isOverdue) {
-        if (isOverdue) {
-            return '<span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">Overdue</span>';
-        }
-        
-        switch (status) {
-            case 'graded':
-                return '<span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">Graded</span>';
-            case 'pending':
-                return '<span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">Pending</span>';
-            default:
-                return '<span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">Not Submitted</span>';
-        }
+
+    function getStatusBadge(status) {
+        const badges = {
+            'not_submitted': '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Pending</span>',
+            'overdue': '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Overdue</span>',
+            'submitted': '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Submitted</span>',
+            'graded': '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Graded</span>'
+        };
+        return badges[status] || '';
     }
-    
-    function getGradeBadge(percentage) {
-        if (percentage === null || percentage === undefined) return '';
-        
-        let grade, colorClass;
-        if (percentage >= 90) {
-            grade = 'A';
-            colorClass = 'bg-green-100 text-green-800';
-        } else if (percentage >= 80) {
-            grade = 'B';
-            colorClass = 'bg-blue-100 text-blue-800';
-        } else if (percentage >= 70) {
-            grade = 'C';
-            colorClass = 'bg-yellow-100 text-yellow-800';
-        } else if (percentage >= 60) {
-            grade = 'D';
-            colorClass = 'bg-orange-100 text-orange-800';
+
+    function getActionButton(assessment, status) {
+        if (status === 'graded') {
+            return `<a href="assessment-submit.html?assessment_id=${assessment.assessment_id}" 
+                       class="text-gray-600 hover:text-gray-900">View Grade</a>`;
+        } else if (status === 'submitted') {
+            return `<a href="assessment-submit.html?assessment_id=${assessment.assessment_id}" 
+                       class="text-blue-600 hover:text-blue-900">View/Edit</a>`;
         } else {
-            grade = 'F';
-            colorClass = 'bg-red-100 text-red-800';
+            return `<a href="assessment-submit.html?assessment_id=${assessment.assessment_id}" 
+                       class="bg-blue-600 text-white px-3 py-1 rounded-md text-xs hover:bg-blue-700">Submit</a>`;
         }
-        
-        return `<span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full ${colorClass}">${grade}</span>`;
     }
-    
-    function showAssessmentDetails(assessment) {
-        modalTitle.textContent = assessment.title;
-        
-        const dueDate = assessment.due_date ? new Date(assessment.due_date) : null;
-        const submissionDate = assessment.submission_date ? new Date(assessment.submission_date) : null;
-        
-        modalContent.innerHTML = `
-            <div class="space-y-4">
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Course</label>
-                        <p class="text-sm text-gray-900">${assessment.course_code} - ${assessment.course_name}</p>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Type</label>
-                        <p class="text-sm text-gray-900">${assessment.type_name}</p>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Maximum Score</label>
-                        <p class="text-sm text-gray-900">${assessment.max_score} points</p>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Weight</label>
-                        <p class="text-sm text-gray-900">${assessment.weight || 'Not specified'}${assessment.weight ? '%' : ''}</p>
-                    </div>
-                    ${dueDate ? `
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">Due Date</label>
-                            <p class="text-sm text-gray-900">${dueDate.toLocaleDateString()} ${dueDate.toLocaleTimeString()}</p>
-                        </div>
-                    ` : ''}
-                    ${assessment.score !== null ? `
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">Your Score</label>
-                            <p class="text-sm text-gray-900 font-semibold">${assessment.score}/${assessment.max_score} (${assessment.percentage?.toFixed(1)}%)</p>
-                        </div>
-                    ` : ''}
-                </div>
-                
-                ${assessment.description ? `
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Description</label>
-                        <p class="text-sm text-gray-900 bg-gray-50 p-3 rounded-md">${assessment.description}</p>
-                    </div>
-                ` : ''}
-                
-                ${assessment.feedback ? `
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Feedback</label>
-                        <p class="text-sm text-gray-900 bg-blue-50 p-3 rounded-md">${assessment.feedback}</p>
-                    </div>
-                ` : ''}
-                
-                ${submissionDate ? `
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Submission Date</label>
-                        <p class="text-sm text-gray-900">${submissionDate.toLocaleDateString()} ${submissionDate.toLocaleTimeString()}</p>
-                        ${assessment.is_late ? '<span class="text-xs text-red-600 font-medium">Late Submission</span>' : ''}
-                    </div>
-                ` : ''}
-            </div>
-        `;
-        
-        assessmentModal.classList.remove('hidden');
+
+    function updateCounts(assessments) {
+        const counts = {
+            total: assessments.length,
+            pending: 0,
+            submitted: 0,
+            graded: 0
+        };
+
+        assessments.forEach(assessment => {
+            const status = getAssessmentStatus(assessment);
+            if (status === 'graded') {
+                counts.graded++;
+            } else if (status === 'submitted') {
+                counts.submitted++;
+            } else {
+                counts.pending++;
+            }
+        });
+
+        totalCount.textContent = counts.total;
+        pendingCount.textContent = counts.pending;
+        submittedCount.textContent = counts.submitted;
+        gradedCount.textContent = counts.graded;
     }
-    
+
     function showLoading(show) {
         if (show) {
-            loadingIndicator.classList.remove('hidden');
-            assessmentsContainer.classList.add('hidden');
-            noAssessments.classList.add('hidden');
+            loadingState.classList.remove('hidden');
+            assessmentsTable.classList.add('hidden');
+            noDataState.classList.add('hidden');
         } else {
-            loadingIndicator.classList.add('hidden');
+            loadingState.classList.add('hidden');
         }
     }
-    
-    function showNoAssessments() {
-        assessmentsContainer.classList.add('hidden');
-        noAssessments.classList.remove('hidden');
+
+    function showNoData() {
+        loadingState.classList.add('hidden');
+        assessmentsTable.classList.add('hidden');
+        noDataState.classList.remove('hidden');
     }
-    
-    function showError(message) {
-        console.error(message);
-        // You can implement a toast notification here
-        alert(message);
-    }
-    
-    // Event delegation for assessment cards
-    document.addEventListener('click', function(e) {
-        const assessmentCard = e.target.closest('.assessment-card');
-        if (assessmentCard) {
-            const assessment = JSON.parse(assessmentCard.dataset.assessment);
-            showAssessmentDetails(assessment);
-        }
-    });
 });

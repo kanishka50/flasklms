@@ -189,7 +189,7 @@ def get_predictions():
             'message': 'Failed to load predictions'
         }), 500
 
-@student_bp.route('/assessments/<int:offering_id>', methods=['GET'])
+@student_bp.route('/course/<int:offering_id>/assessments', methods=['GET'])
 @jwt_required()
 @student_required
 def get_student_course_assessments(offering_id):
@@ -762,7 +762,7 @@ def get_assessment_detail(assessment_id):
 @jwt_required()
 @student_required
 def submit_assessment(assessment_id):
-    """Submit an assessment (text submission or file reference)"""
+    """Submit an assessment with text and/or file"""
     try:
         user_id = get_jwt_identity()
         user = get_user_by_id(user_id)
@@ -771,27 +771,120 @@ def submit_assessment(assessment_id):
             return error_response('Student profile not found', 404)
         
         student_id = user.student.student_id
-        data = request.get_json()
+        
+        # Get enrollment for this assessment
+        enrollment = db.session.query(Enrollment).join(
+            CourseOffering, Enrollment.offering_id == CourseOffering.offering_id
+        ).join(
+            Assessment, Assessment.offering_id == CourseOffering.offering_id
+        ).filter(
+            Assessment.assessment_id == assessment_id,
+            Enrollment.student_id == student_id
+        ).first()
+        
+        if not enrollment:
+            return error_response('You are not enrolled in this course', 403)
+        
+        # Handle both JSON and form data
+        submission_text = None
+        file_info = None
+        submission_type = 'text'
+        
+        if request.content_type and 'multipart/form-data' in request.content_type:
+            # Handle file upload
+            submission_text = request.form.get('submission_text')
+            
+            if 'file' in request.files:
+                file = request.files['file']
+                if file and file.filename:
+                    # Save file
+                    file_result, error = file_service.save_submission_file(
+                        file, student_id, assessment_id
+                    )
+                    
+                    if error:
+                        return error_response(error, 400)
+                    
+                    file_info = file_result
+                    submission_type = 'both' if submission_text else 'file'
+        else:
+            # Handle JSON data
+            data = request.get_json()
+            submission_text = data.get('submission_text')
+            submission_type = 'text'
+        
+        # Validate that at least one type of submission is provided
+        if not submission_text and not file_info:
+            return error_response('Please provide either text or file submission', 400)
         
         # Create submission
-        submission = assessment_service.create_submission(
-            student_id=student_id,
+        submission, error = assessment_service.create_submission(
+            enrollment_id=enrollment.enrollment_id,
             assessment_id=assessment_id,
-            submission_text=data.get('submission_text'),
-            file_url=data.get('file_url')
+            submission_text=submission_text,
+            file_info=file_info,
+            submission_type=submission_type
         )
         
-        if submission:
-            return api_response({
-                'submission_id': submission.submission_id,
-                'submitted_at': submission.submission_date.isoformat()
-            }, 'Assessment submitted successfully')
-        else:
-            return error_response('Failed to submit assessment', 500)
-            
+        if error:
+            # Clean up uploaded file if submission failed
+            if file_info:
+                file_service.delete_file(file_info['file_path'])
+            return error_response(error, 500)
+        
+        return api_response({
+            'submission_id': submission.submission_id,
+            'submitted_at': submission.submission_date.isoformat(),
+            'is_late': submission.is_late,
+            'submission_type': submission.submission_type
+        }, 'Assessment submitted successfully')
+        
     except Exception as e:
         logger.error(f"Error submitting assessment: {str(e)}")
         return error_response('Failed to submit assessment', 500)
+    
+@student_bp.route('/assessments/<int:assessment_id>/download', methods=['GET'])
+@jwt_required()
+@student_required
+def download_submission(assessment_id):
+    """Download submitted file"""
+    try:
+        user_id = get_jwt_identity()
+        user = get_user_by_id(user_id)
+        
+        if not user or not user.student:
+            return error_response('Student profile not found', 404)
+        
+        # Get submission
+        submission = db.session.query(AssessmentSubmission).join(
+            Enrollment, AssessmentSubmission.enrollment_id == Enrollment.enrollment_id
+        ).filter(
+            AssessmentSubmission.assessment_id == assessment_id,
+            Enrollment.student_id == user.student.student_id
+        ).first()
+        
+        if not submission or not submission.file_path:
+            return error_response('No file found', 404)
+        
+        # Send file
+        from flask import send_file
+        upload_folder = current_app.config.get('UPLOAD_FOLDER', 'uploads')
+        file_path = os.path.join(upload_folder, submission.file_path)
+        
+        if not os.path.exists(file_path):
+            return error_response('File not found on server', 404)
+        
+        return send_file(
+            file_path,
+            as_attachment=True,
+            download_name=submission.file_name,
+            mimetype=submission.mime_type
+        )
+        
+    except Exception as e:
+        logger.error(f"Error downloading file: {str(e)}")
+        return error_response('Failed to download file', 500)
+
 
 @student_bp.route('/grades/summary', methods=['GET'])
 @jwt_required()

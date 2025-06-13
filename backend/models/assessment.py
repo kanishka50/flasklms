@@ -94,6 +94,12 @@ class AssessmentSubmission(db.Model):
     graded_by = db.Column(db.String(20), nullable=True)
     feedback = db.Column(db.Text, nullable=True)
     attempt_number = db.Column(db.Integer, default=1)
+    submission_text = db.Column(db.Text, nullable=True)  # For text submissions
+    file_path = db.Column(db.String(500), nullable=True)  # File storage path
+    file_name = db.Column(db.String(255), nullable=True)  # Original filename
+    file_size = db.Column(db.Integer, nullable=True)  # File size in bytes
+    mime_type = db.Column(db.String(100), nullable=True)  # File MIME type
+    submission_type = db.Column(db.String(50), default='text')  # 'text', 'file', or 'both'
     
     __table_args__ = (
         db.UniqueConstraint('enrollment_id', 'assessment_id', 'attempt_number', name='unique_submission'),
@@ -103,6 +109,13 @@ class AssessmentSubmission(db.Model):
         self.enrollment_id = enrollment_id
         self.assessment_id = assessment_id
         self.submission_date = submission_date
+
+        self.submission_text = kwargs.get('submission_text')
+        self.file_path = kwargs.get('file_path')
+        self.file_name = kwargs.get('file_name')
+        self.file_size = kwargs.get('file_size')
+        self.mime_type = kwargs.get('mime_type')
+        self.submission_type = kwargs.get('submission_type', 'text')
         
         # Optional fields
         self.score = kwargs.get('score')
@@ -135,6 +148,12 @@ class AssessmentSubmission(db.Model):
             'enrollment_id': self.enrollment_id,
             'assessment_id': self.assessment_id,
             'submission_date': self.submission_date.isoformat() if self.submission_date else None,
+            'submission_text': self.submission_text,
+            'file_name': self.file_name,
+            'file_size': self.file_size,
+            'mime_type': self.mime_type,
+            'submission_type': self.submission_type,
+            'has_file': bool(self.file_path),
             'score': float(self.score) if self.score else None,
             'percentage': float(self.percentage) if self.percentage else None,
             'is_late': self.is_late,

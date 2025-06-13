@@ -44,7 +44,7 @@ class Config:
     # Upload
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
     UPLOAD_FOLDER = os.path.join(basedir, 'uploads')
-    ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls', 'txt', 'pdf'}
+    ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls', 'txt', 'pdf', 'doc', 'docx',  'zip', 'jpg', 'jpeg', 'png'}
     
     
     # API

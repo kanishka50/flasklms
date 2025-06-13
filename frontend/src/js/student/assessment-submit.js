@@ -49,6 +49,14 @@ document.addEventListener('DOMContentLoaded', function() {
     // State
     let assessmentData = null;
     let isSubmitted = false;
+    let selectedFile = null;
+    
+    // Create file input element
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.pdf,.doc,.docx,.txt,.zip,.jpg,.jpeg,.png';
+    fileInput.style.display = 'none';
+    document.body.appendChild(fileInput);
     
     // Initialize
     initialize();
@@ -57,6 +65,8 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             await loadAssessmentDetails();
             setupEventListeners();
+            setupFileUpload();
+            updateFileUploadSection();
         } catch (error) {
             console.error('Initialization error:', error);
             showError('Failed to initialize page');
@@ -64,27 +74,31 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     async function loadAssessmentDetails() {
-        try {
-            showLoading(true);
-            
-            const response = await apiClient.get(`student/assessments/${assessmentId}`);
-            
-            if (response.status === 'success' && response.data) {
-                assessmentData = response.data;
-                displayAssessmentInfo();
-                checkSubmissionStatus();
-                showLoading(false);
-            } else {
-                throw new Error('Failed to load assessment details');
-            }
-        } catch (error) {
-            console.error('Error loading assessment:', error);
-            showError('Failed to load assessment. Redirecting...');
-            setTimeout(() => {
-                window.location.href = 'assessments.html';
-            }, 2000);
+    try {
+        showLoading(true);
+        
+        console.log('Loading assessment with ID:', assessmentId); // ADD THIS
+        const response = await apiClient.get(`student/assessments/${assessmentId}`);
+        console.log('API Response:', response); // ADD THIS
+        
+        if (response.status === 'success' && response.data) {
+            assessmentData = response.data;
+            console.log('Assessment Data:', assessmentData); // ADD THIS
+            displayAssessmentInfo();
+            checkSubmissionStatus();
+            showLoading(false);
+        } else {
+            console.log('No data in response'); // ADD THIS
+            throw new Error('Failed to load assessment details');
         }
+    } catch (error) {
+        console.error('Error loading assessment:', error);
+        showError('Failed to load assessment. Redirecting...');
+        setTimeout(() => {
+            window.location.href = 'assessments.html';
+        }, 2000);
     }
+}
     
     function displayAssessmentInfo() {
         assessmentTitle.textContent = assessmentData.title;
@@ -151,9 +165,26 @@ document.addEventListener('DOMContentLoaded', function() {
                 previousSubmission.classList.remove('hidden');
                 previousSubmissionContent.innerHTML = `
                     <div class="bg-gray-50 p-4 rounded-md">
-                        <pre class="whitespace-pre-wrap text-sm">${assessmentData.submission_text}</pre>
+                        <pre class="whitespace-pre-wrap text-sm">${escapeHtml(assessmentData.submission_text)}</pre>
                     </div>
                 `;
+            }
+            
+            // Show submitted file info if exists
+            if (assessmentData.file_name) {
+                const fileInfoHtml = `
+                    <div class="mt-3 p-3 bg-blue-50 rounded-md">
+                        <p class="text-sm font-medium text-blue-900">Attached File:</p>
+                        <div class="flex items-center mt-2">
+                            <svg class="h-5 w-5 text-blue-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M8 4a3 3 0 00-3 3v4a5 5 0 0010 0V7a1 1 0 112 0v4a7 7 0 11-14 0V7a5 5 0 0110 0v4a3 3 0 11-6 0V7a1 1 0 012 0v4a1 1 0 102 0V7a3 3 0 00-3-3z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span class="text-sm text-blue-800">${assessmentData.file_name}</span>
+                            <a href="#" onclick="downloadSubmittedFile(event)" class="ml-3 text-xs text-blue-600 hover:text-blue-800 underline">Download</a>
+                        </div>
+                    </div>
+                `;
+                previousSubmissionContent.innerHTML += fileInfoHtml;
             }
             
             // Show feedback if available
@@ -168,10 +199,49 @@ document.addEventListener('DOMContentLoaded', function() {
                 submissionText.disabled = true;
                 submitBtn.disabled = true;
                 submitBtn.textContent = 'Already Graded';
+                // Disable file upload
+                const fileUploadArea = document.getElementById('fileUploadArea');
+                if (fileUploadArea) {
+                    fileUploadArea.classList.add('cursor-not-allowed', 'opacity-50');
+                    fileUploadArea.onclick = null;
+                }
             } else {
                 // Allow resubmission if not graded
                 submitBtn.textContent = 'Resubmit Assessment';
             }
+        }
+    }
+    
+    function updateFileUploadSection() {
+        // Find the existing file upload div
+        const fileUploadDiv = document.querySelector('.border-2.border-dashed');
+        if (fileUploadDiv && fileUploadDiv.parentElement) {
+            fileUploadDiv.parentElement.innerHTML = `
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    File Upload (Optional)
+                </label>
+                <div id="fileUploadArea" class="border-2 border-dashed border-gray-300 rounded-md p-6 text-center cursor-pointer hover:border-gray-400 transition-colors">
+                    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                    </svg>
+                    <p class="mt-2 text-sm text-gray-600">Click to upload or drag and drop</p>
+                    <p class="text-xs text-gray-500">PDF, DOC, DOCX, TXT, ZIP, JPG, PNG (Max 10MB)</p>
+                </div>
+                <div id="selectedFileInfo" class="hidden mt-3 p-3 bg-gray-50 rounded-md flex items-center justify-between">
+                    <div class="flex items-center">
+                        <svg class="h-5 w-5 text-gray-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M8 4a3 3 0 00-3 3v4a5 5 0 0010 0V7a1 1 0 112 0v4a7 7 0 11-14 0V7a5 5 0 0110 0v4a3 3 0 11-6 0V7a1 1 0 012 0v4a1 1 0 102 0V7a3 3 0 00-3-3z" clip-rule="evenodd"></path>
+                        </svg>
+                        <span id="selectedFileName" class="text-sm text-gray-700"></span>
+                        <span id="selectedFileSize" class="text-xs text-gray-500 ml-2"></span>
+                    </div>
+                    <button type="button" id="removeFileBtn" class="text-red-600 hover:text-red-800">
+                        <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+                        </svg>
+                    </button>
+                </div>
+            `;
         }
     }
     
@@ -184,7 +254,8 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Cancel button
         cancelBtn.addEventListener('click', function() {
-            if (submissionText.value.trim() && !confirm('You have unsaved changes. Are you sure you want to cancel?')) {
+            const hasChanges = submissionText.value.trim() || selectedFile;
+            if (hasChanges && !confirm('You have unsaved changes. Are you sure you want to cancel?')) {
                 return;
             }
             window.location.href = 'assessments.html';
@@ -196,11 +267,100 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
+    function setupFileUpload() {
+        const fileUploadArea = document.getElementById('fileUploadArea');
+        const selectedFileInfo = document.getElementById('selectedFileInfo');
+        const selectedFileName = document.getElementById('selectedFileName');
+        const selectedFileSize = document.getElementById('selectedFileSize');
+        const removeFileBtn = document.getElementById('removeFileBtn');
+        
+        if (!fileUploadArea) return;
+        
+        // Only setup if not already graded
+        if (assessmentData && assessmentData.status === 'graded') {
+            return;
+        }
+        
+        // Click to upload
+        fileUploadArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+        
+        // Drag and drop
+        fileUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.add('border-blue-500', 'bg-blue-50');
+        });
+        
+        fileUploadArea.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.remove('border-blue-500', 'bg-blue-50');
+        });
+        
+        fileUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.remove('border-blue-500', 'bg-blue-50');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileSelect(files[0]);
+            }
+        });
+        
+        // File input change
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileSelect(e.target.files[0]);
+            }
+        });
+        
+        // Remove file
+        if (removeFileBtn) {
+            removeFileBtn.addEventListener('click', () => {
+                selectedFile = null;
+                fileInput.value = '';
+                selectedFileInfo.classList.add('hidden');
+                fileUploadArea.classList.remove('hidden');
+            });
+        }
+    }
+    
+    function handleFileSelect(file) {
+        // Validate file
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        const allowedExtensions = ['pdf', 'doc', 'docx', 'txt', 'zip', 'jpg', 'jpeg', 'png'];
+        const fileExtension = file.name.split('.').pop().toLowerCase();
+        
+        if (file.size > maxSize) {
+            alert('File is too large. Maximum size is 10MB.');
+            return;
+        }
+        
+        if (!allowedExtensions.includes(fileExtension)) {
+            alert('Invalid file type. Please upload PDF, DOC, DOCX, TXT, ZIP, JPG, or PNG files.');
+            return;
+        }
+        
+        selectedFile = file;
+        document.getElementById('selectedFileName').textContent = file.name;
+        document.getElementById('selectedFileSize').textContent = `(${formatFileSize(file.size)})`;
+        document.getElementById('selectedFileInfo').classList.remove('hidden');
+        document.getElementById('fileUploadArea').classList.add('hidden');
+    }
+    
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+    
     async function submitAssessment() {
         const text = submissionText.value.trim();
         
-        if (!text) {
-            alert('Please enter your submission text');
+        if (!text && !selectedFile) {
+            alert('Please enter submission text or upload a file');
             return;
         }
         
@@ -218,10 +378,40 @@ document.addEventListener('DOMContentLoaded', function() {
             submitBtn.disabled = true;
             submitBtn.textContent = 'Submitting...';
             
-            const response = await apiClient.post(`student/assessments/${assessmentId}/submit`, {
-                submission_text: text,
-                file_url: null // Placeholder for future file upload
-            });
+            let response;
+            
+            if (selectedFile) {
+                // Use FormData for file upload
+                const formData = new FormData();
+                if (text) {
+                    formData.append('submission_text', text);
+                }
+                formData.append('file', selectedFile);
+                
+                // Check if apiClient has postFormData method, if not, use axios directly
+                if (typeof apiClient.postFormData === 'function') {
+                    response = await apiClient.postFormData(`student/assessments/${assessmentId}/submit`, formData);
+                } else {
+                    // Fallback to direct axios call
+                    const token = authApi.getToken();
+                    const axiosResponse = await axios.post(
+                        `${apiClient.baseURL}/student/assessments/${assessmentId}/submit`,
+                        formData,
+                        {
+                            headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'multipart/form-data'
+                            }
+                        }
+                    );
+                    response = axiosResponse.data;
+                }
+            } else {
+                // JSON submission for text only
+                response = await apiClient.post(`student/assessments/${assessmentId}/submit`, {
+                    submission_text: text
+                });
+            }
             
             if (response.status === 'success') {
                 // Show success modal
@@ -262,4 +452,21 @@ document.addEventListener('DOMContentLoaded', function() {
         console.error(message);
         alert(message);
     }
+    
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    // Make downloadSubmittedFile available globally
+    window.downloadSubmittedFile = async function(event) {
+        event.preventDefault();
+        try {
+            window.location.href = `${apiClient.baseURL}/student/assessments/${assessmentId}/download`;
+        } catch (error) {
+            console.error('Error downloading file:', error);
+            showError('Failed to download file');
+        }
+    };
 });

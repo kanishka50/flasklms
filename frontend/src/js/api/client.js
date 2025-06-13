@@ -106,5 +106,26 @@ const apiClient = {
             authApi.logout();
             throw new Error('Session expired. Please log in again.');
         }
+    },
+
+    // Add this method to your apiClient:
+    async postFormData(endpoint, formData) {
+        const token = authApi.getToken();
+        if (!token) {
+            throw new Error('No authentication token');
+        }
+        
+        try {
+            const response = await axios.post(`${this.baseURL}/${endpoint}`, formData, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'multipart/form-data'
+                }
+            });
+            return response.data;
+        } catch (error) {
+            console.error('API Error:', error);
+            throw error;
+        }
     }
 };

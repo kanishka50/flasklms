@@ -307,21 +307,12 @@ class AssessmentService:
         """Get all assessments for a student"""
         try:
             query = db.session.query(
-                Assessment.assessment_id,
-                Assessment.title,
-                Assessment.max_score,
-                Assessment.due_date,
-                Assessment.weight,
-                Assessment.description,
-                AssessmentType.type_name,
-                Course.course_code,
-                Course.course_name,
-                AssessmentSubmission.score,
-                AssessmentSubmission.percentage,
-                AssessmentSubmission.submission_date,
-                AssessmentSubmission.feedback,
-                AssessmentSubmission.is_late
-            ).select_from(Assessment).join(
+                Assessment,  # Get the full Assessment object
+                AssessmentType,
+                Course,
+                CourseOffering,
+                AssessmentSubmission
+            ).join(
                 CourseOffering, CourseOffering.offering_id == Assessment.offering_id
             ).join(
                 Course, Course.course_id == CourseOffering.course_id
@@ -347,23 +338,23 @@ class AssessmentService:
             assessments = query.order_by(Assessment.due_date.desc()).all()
             
             result = []
-            for assessment in assessments:
+            for assessment, assessment_type, course, offering, submission in assessments:
                 result.append({
-                    'assessment_id': assessment.assessment_id,
+                    'assessment_id': assessment.assessment_id,  # Make sure this is included
                     'title': assessment.title,
-                    'type_name': assessment.type_name,
-                    'course_code': assessment.course_code,
-                    'course_name': assessment.course_name,
+                    'type_name': assessment_type.type_name,
+                    'course_code': course.course_code,
+                    'course_name': course.course_name,
                     'max_score': float(assessment.max_score),
                     'due_date': assessment.due_date.isoformat() if assessment.due_date else None,
                     'weight': float(assessment.weight) if assessment.weight else None,
                     'description': assessment.description,
-                    'score': float(assessment.score) if assessment.score else None,
-                    'percentage': float(assessment.percentage) if assessment.percentage else None,
-                    'submission_date': assessment.submission_date.isoformat() if assessment.submission_date else None,
-                    'feedback': assessment.feedback,
-                    'is_late': assessment.is_late,
-                    'status': 'graded' if assessment.score is not None else 'pending'
+                    'score': float(submission.score) if submission and submission.score is not None else None,
+                    'percentage': float(submission.percentage) if submission and submission.percentage is not None else None,
+                    'submission_date': submission.submission_date.isoformat() if submission and submission.submission_date else None,
+                    'feedback': submission.feedback if submission else None,
+                    'is_late': submission.is_late if submission else False,
+                    'status': 'graded' if submission and submission.score is not None else ('submitted' if submission else 'pending')
                 })
             
             return result
@@ -591,6 +582,153 @@ class AssessmentService:
             db.session.rollback()
             logger.error(f"Error deleting assessment: {str(e)}")
             return False, str(e)
+        
+
+    @staticmethod
+    def get_student_assessment_detail(student_id, assessment_id):
+        """Get detailed assessment information for a student"""
+        try:
+            # Get enrollment for the student
+            result = db.session.query(
+                Assessment,
+                AssessmentType,
+                Course,
+                CourseOffering,
+                Enrollment,
+                AssessmentSubmission
+            ).join(
+                AssessmentType, Assessment.type_id == AssessmentType.type_id
+            ).join(
+                CourseOffering, Assessment.offering_id == CourseOffering.offering_id
+            ).join(
+                Course, CourseOffering.course_id == Course.course_id
+            ).join(
+                Enrollment, Enrollment.offering_id == CourseOffering.offering_id
+            ).outerjoin(
+                AssessmentSubmission, 
+                db.and_(
+                    AssessmentSubmission.assessment_id == Assessment.assessment_id,
+                    AssessmentSubmission.enrollment_id == Enrollment.enrollment_id
+                )
+            ).filter(
+                Assessment.assessment_id == assessment_id,
+                Enrollment.student_id == student_id,
+                Assessment.is_published == True,
+                Enrollment.enrollment_status == 'enrolled'  # Add this check
+            ).first()
+            
+            if not result:
+                logger.warning(f"No assessment found for student {student_id} and assessment {assessment_id}")
+                return None
+            
+            assessment, assessment_type, course, offering, enrollment, submission = result
+            
+            # Build response with all necessary fields
+            data = {
+                'assessment_id': assessment.assessment_id,
+                'title': assessment.title,
+                'description': assessment.description,
+                'type_id': assessment.type_id,
+                'type_name': assessment_type.type_name,
+                'course_id': course.course_id,
+                'course_code': course.course_code,
+                'course_name': course.course_name,
+                'max_score': float(assessment.max_score) if assessment.max_score else 0,
+                'due_date': assessment.due_date.isoformat() if assessment.due_date else None,
+                'weight': float(assessment.weight) if assessment.weight else None,
+                'is_late': datetime.utcnow() > assessment.due_date if assessment.due_date else False,
+                'status': 'not_submitted'
+            }
+            
+            # Add submission info if exists
+            if submission:
+                data.update({
+                    'submission_id': submission.submission_id,
+                    'submission_date': submission.submission_date.isoformat() if submission.submission_date else None,
+                    'submission_text': submission.submission_text,
+                    'file_name': submission.file_name,
+                    'has_file': bool(submission.file_path),
+                    'submission_type': submission.submission_type,
+                    'score': float(submission.score) if submission.score is not None else None,
+                    'percentage': float(submission.percentage) if submission.percentage is not None else None,
+                    'feedback': submission.feedback,
+                    'status': 'graded' if submission.score is not None else 'submitted',
+                    'is_late': submission.is_late if hasattr(submission, 'is_late') else False
+                })
+            
+            logger.info(f"Returning assessment data: {data}")
+            return data
+            
+        except Exception as e:
+            logger.error(f"Error getting assessment detail: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return None
+            
+    @staticmethod
+    def create_submission(enrollment_id, assessment_id, submission_text=None, 
+                     file_info=None, submission_type='text'):
+        """Create or update a student submission"""
+        try:
+            # Get assessment to check due date
+            assessment = Assessment.query.get(assessment_id)
+            if not assessment:
+                return None, "Assessment not found"
+            
+            # Check if late
+            is_late = False
+            if assessment.due_date and datetime.utcnow() > assessment.due_date:
+                is_late = True
+            
+            # Check for existing submission
+            existing = AssessmentSubmission.query.filter_by(
+                enrollment_id=enrollment_id,
+                assessment_id=assessment_id
+            ).first()
+            
+            if existing:
+                # Update existing submission
+                existing.submission_date = datetime.utcnow()
+                existing.submission_text = submission_text
+                existing.is_late = is_late
+                existing.submission_type = submission_type
+                
+                # Update file info if provided
+                if file_info:
+                    existing.file_path = file_info.get('file_path')
+                    existing.file_name = file_info.get('file_name')
+                    existing.file_size = file_info.get('file_size')
+                    existing.mime_type = file_info.get('mime_type')
+                
+                submission = existing
+            else:
+                # Create new submission
+                submission = AssessmentSubmission(
+                    enrollment_id=enrollment_id,
+                    assessment_id=assessment_id,
+                    submission_date=datetime.utcnow(),
+                    submission_text=submission_text,
+                    is_late=is_late,
+                    submission_type=submission_type
+                )
+                
+                # Add file info if provided
+                if file_info:
+                    submission.file_path = file_info.get('file_path')
+                    submission.file_name = file_info.get('file_name')
+                    submission.file_size = file_info.get('file_size')
+                    submission.mime_type = file_info.get('mime_type')
+                
+                db.session.add(submission)
+            
+            db.session.commit()
+            return submission, None
+            
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error creating submission: {str(e)}")
+            return None, str(e)
+
 
 # Create service instance
 assessment_service = AssessmentService()
