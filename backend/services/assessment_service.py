@@ -1,3 +1,4 @@
+# backend/services/assessment_service.py - FIXED VERSION
 from backend.models import (
     Assessment, AssessmentType, AssessmentSubmission, Enrollment, 
     Student, CourseOffering, Course
@@ -26,9 +27,19 @@ class AssessmentService:
     def create_assessment(offering_id, type_id, title, max_score, due_date=None, weight=None, description=None, created_by=None):
         """Create a new assessment"""
         try:
-            # Parse due_date if it's a string
-            if isinstance(due_date, str):
-                due_date = datetime.strptime(due_date, '%Y-%m-%d %H:%M')
+            # ✅ FIXED: Handle multiple date formats from frontend
+            if isinstance(due_date, str) and due_date:
+                try:
+                    # Try ISO format first (what frontend sends): 2025-06-20T18:29
+                    if 'T' in due_date:
+                        due_date = datetime.fromisoformat(due_date)
+                    else:
+                        # Fallback to space format: 2025-06-20 18:29
+                        due_date = datetime.strptime(due_date, '%Y-%m-%d %H:%M')
+                except ValueError as e:
+                    logger.error(f"Error parsing due_date '{due_date}': {str(e)}")
+                    # If parsing fails, set to None (optional field)
+                    due_date = None
             
             assessment = Assessment(
                 offering_id=offering_id,
@@ -427,6 +438,110 @@ class AssessmentService:
             logger.error(f"Error getting assessment statistics: {str(e)}")
             import traceback
             traceback.print_exc()
+            return None
+    
+    @staticmethod
+    def update_assessment(assessment_id, title=None, max_score=None, due_date=None, weight=None, description=None, is_published=None, updated_by=None):
+        """Update an existing assessment"""
+        try:
+            assessment = Assessment.query.get(assessment_id)
+            if not assessment:
+                return None, "Assessment not found"
+            
+            # Check if there are submissions and restrict certain updates
+            submission_count = AssessmentSubmission.query.filter_by(
+                assessment_id=assessment_id
+            ).count()
+            
+            # Update fields if provided
+            if title is not None:
+                assessment.title = title
+            
+            if max_score is not None:
+                # Don't allow max_score changes if there are graded submissions
+                graded_submissions = AssessmentSubmission.query.filter_by(
+                    assessment_id=assessment_id
+                ).filter(AssessmentSubmission.score.isnot(None)).count()
+                
+                if graded_submissions > 0 and float(max_score) != float(assessment.max_score):
+                    return None, "Cannot change max score when submissions have been graded"
+                assessment.max_score = max_score
+            
+            if due_date is not None:
+                # Handle date parsing same as create_assessment
+                if isinstance(due_date, str) and due_date:
+                    try:
+                        if 'T' in due_date:
+                            due_date = datetime.fromisoformat(due_date)
+                        else:
+                            due_date = datetime.strptime(due_date, '%Y-%m-%d %H:%M')
+                    except ValueError as e:
+                        logger.error(f"Error parsing due_date '{due_date}': {str(e)}")
+                        due_date = None
+                assessment.due_date = due_date
+            
+            if weight is not None:
+                assessment.weight = weight
+            
+            if description is not None:
+                assessment.description = description
+            
+            if is_published is not None:
+                assessment.is_published = is_published
+            
+            db.session.commit()
+            logger.info(f"Assessment updated: {assessment.title} (ID: {assessment_id})")
+            return assessment, None
+            
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error updating assessment: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return None, str(e)
+    
+    @staticmethod
+    def get_assessment_by_id(assessment_id):
+        """Get a single assessment by ID"""
+        try:
+            assessment = db.session.query(
+                Assessment.assessment_id,
+                Assessment.offering_id,
+                Assessment.type_id,
+                Assessment.title,
+                Assessment.max_score,
+                Assessment.due_date,
+                Assessment.weight,
+                Assessment.description,
+                Assessment.is_published,
+                Assessment.created_at,
+                AssessmentType.type_name,
+                AssessmentType.type_id.label('type_id_check')
+            ).join(
+                AssessmentType, AssessmentType.type_id == Assessment.type_id
+            ).filter(
+                Assessment.assessment_id == assessment_id
+            ).first()
+            
+            if not assessment:
+                return None
+            
+            return {
+                'assessment_id': assessment.assessment_id,
+                'offering_id': assessment.offering_id,
+                'type_id': assessment.type_id,
+                'title': assessment.title,
+                'type_name': assessment.type_name,
+                'max_score': float(assessment.max_score),
+                'due_date': assessment.due_date.isoformat() if assessment.due_date else None,
+                'weight': float(assessment.weight) if assessment.weight else None,
+                'description': assessment.description,
+                'is_published': assessment.is_published,
+                'created_at': assessment.created_at.isoformat() if assessment.created_at else None
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting assessment: {str(e)}")
             return None
     
     @staticmethod
