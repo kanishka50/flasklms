@@ -908,3 +908,4 @@ def get_grades_summary():
     except Exception as e:
         logger.error(f"Error getting grades summary: {str(e)}")
         return error_response('Failed to get grades summary', 500)
+    

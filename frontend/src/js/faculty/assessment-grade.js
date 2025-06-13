@@ -24,6 +24,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const modalTitle = document.getElementById('modalTitle');
     const modalMessage = document.getElementById('modalMessage');
     const statisticsContent = document.getElementById('statisticsContent');
+
+    let currentSubmission = null;
+    const submissionModal = document.getElementById('submissionModal');
+    const closeSubmissionModal = document.getElementById('closeSubmissionModal');
+    const submissionContent = document.getElementById('submissionContent');
+    const downloadSubmissionBtn = document.getElementById('downloadSubmissionBtn');
     
     // State
     let currentAssessmentId = null;
@@ -62,6 +68,215 @@ document.addEventListener('DOMContentLoaded', function() {
         // Set up event listeners
         setupEventListeners();
     }
+
+
+
+
+    async function viewSubmission(enrollmentId) {
+    const student = rosterData.find(s => s.enrollment_id === enrollmentId);
+    if (!student || !student.submission_id) {
+        showMessage('No submission found for this student', 'info');
+        return;
+    }
+    
+    try {
+        // Show loading state
+        submissionContent.innerHTML = `
+            <div class="text-center py-8">
+                <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <p class="mt-2 text-gray-600">Loading submission...</p>
+            </div>
+        `;
+        submissionModal.classList.remove('hidden');
+        
+        // Fetch submission details
+        const response = await apiClient.get(`faculty/submissions/${student.submission_id}`);
+        
+        if (response.status === 'success' && response.data) {
+            currentSubmission = response.data;
+            displaySubmissionDetails(currentSubmission, student);
+        } else {
+            submissionContent.innerHTML = `
+                <div class="text-center py-8 text-red-600">
+                    Failed to load submission details
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error loading submission:', error);
+        submissionContent.innerHTML = `
+            <div class="text-center py-8 text-red-600">
+                Error loading submission details
+            </div>
+        `;
+    }
+
+
+
+}
+
+function displaySubmissionDetails(submission, student) {
+    let content = `
+        <div class="space-y-4">
+            <!-- Student Info -->
+            <div class="bg-gray-50 p-4 rounded">
+                <h4 class="font-semibold mb-2">Student Information</h4>
+                <div class="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                        <span class="text-gray-600">Name:</span>
+                        <span class="ml-2 font-medium">${student.name}</span>
+                    </div>
+                    <div>
+                        <span class="text-gray-600">ID:</span>
+                        <span class="ml-2 font-medium">${student.student_id}</span>
+                    </div>
+                    <div>
+                        <span class="text-gray-600">Submitted:</span>
+                        <span class="ml-2 font-medium">${formatDateTime(submission.submission_date)}</span>
+                    </div>
+                    <div>
+                        <span class="text-gray-600">Type:</span>
+                        <span class="ml-2 font-medium">${formatSubmissionType(submission.submission_type)}</span>
+                    </div>
+                </div>
+            </div>
+    `;
+    
+    // Text submission
+    if (submission.submission_text) {
+        content += `
+            <div class="bg-blue-50 p-4 rounded">
+                <h4 class="font-semibold mb-2">Text Submission</h4>
+                <div class="bg-white p-4 rounded border border-blue-200 max-h-64 overflow-y-auto">
+                    <pre class="whitespace-pre-wrap text-sm">${escapeHtml(submission.submission_text)}</pre>
+                </div>
+            </div>
+        `;
+    }
+    
+    // File submission
+    if (submission.has_file) {
+        content += `
+            <div class="bg-green-50 p-4 rounded">
+                <h4 class="font-semibold mb-2">File Submission</h4>
+                <div class="bg-white p-4 rounded border border-green-200">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="font-medium">${submission.file_name}</p>
+                            <p class="text-sm text-gray-600">
+                                Size: ${formatFileSize(submission.file_size)} | 
+                                Type: ${submission.mime_type}
+                            </p>
+                        </div>
+                        <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Show download button
+        downloadSubmissionBtn.classList.remove('hidden');
+        downloadSubmissionBtn.onclick = () => downloadSubmission(submission.submission_id);
+    } else {
+        downloadSubmissionBtn.classList.add('hidden');
+    }
+    
+    // Current grade
+    if (submission.score !== null) {
+        content += `
+            <div class="bg-yellow-50 p-4 rounded">
+                <h4 class="font-semibold mb-2">Current Grade</h4>
+                <div class="text-lg font-bold text-yellow-800">
+                    ${submission.score} / ${assessmentData.max_score} (${submission.percentage.toFixed(1)}%)
+                </div>
+                ${submission.feedback ? `
+                    <div class="mt-2">
+                        <p class="text-sm font-medium text-gray-700">Feedback:</p>
+                        <p class="text-sm text-gray-600 mt-1">${submission.feedback}</p>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }
+    
+    content += '</div>';
+    submissionContent.innerHTML = content;
+}
+
+
+
+
+
+async function downloadSubmission(submissionId) {
+    try {
+        const response = await fetch(`${apiClient.baseURL}/faculty/submissions/${submissionId}/download`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+        
+        if (response.ok) {
+            const blob = await response.blob();
+            const contentDisposition = response.headers.get('content-disposition');
+            const fileName = contentDisposition
+                ? contentDisposition.split('filename=')[1].replace(/['"]/g, '')
+                : 'submission';
+            
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        } else {
+            showMessage('Failed to download submission', 'error');
+        }
+    } catch (error) {
+        console.error('Error downloading submission:', error);
+        showMessage('Error downloading submission', 'error');
+    }
+}
+
+function formatDateTime(dateString) {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleString();
+}
+
+function formatSubmissionType(type) {
+    const types = {
+        'text': 'Text Only',
+        'file': 'File Only',
+        'both': 'Text & File'
+    };
+    return types[type] || type;
+}
+
+function formatFileSize(bytes) {
+    if (!bytes) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return text.toString().replace(/[&<>"']/g, m => map[m]);
+}
+
     
     function setupEventListeners() {
         // Logout
@@ -93,6 +308,9 @@ document.addEventListener('DOMContentLoaded', function() {
             successModal.classList.add('hidden');
         });
         
+        closeSubmissionModal.addEventListener('click', function() {
+            submissionModal.classList.add('hidden');
+        });
         // Auto-save on window unload
         window.addEventListener('beforeunload', function(e) {
             if (unsavedChanges.size > 0) {
@@ -167,65 +385,78 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function createStudentRow(student, index) {
-        const row = document.createElement('tr');
-        row.className = 'hover:bg-gray-50';
-        row.dataset.enrollmentId = student.enrollment_id;
-        
-        // Calculate grade letter
-        const gradeLetter = calculateGradeLetter(student.percentage);
-        
-        row.innerHTML = `
-            <td class="px-6 py-4 whitespace-nowrap">
-                <div class="flex items-center">
-                    <div class="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center text-gray-600 font-medium text-sm">
-                        ${student.first_name[0]}${student.last_name[0]}
-                    </div>
-                    <div class="ml-4">
-                        <div class="text-sm font-medium text-gray-900">${student.name}</div>
-                        <div class="text-sm text-gray-500">ID: ${student.student_id}</div>
-                    </div>
+    const row = document.createElement('tr');
+    row.className = 'hover:bg-gray-50';
+    row.dataset.enrollmentId = student.enrollment_id;
+    
+    // Calculate grade letter
+    const gradeLetter = calculateGradeLetter(student.percentage);
+    
+    // Determine submission status
+    const hasSubmission = student.submission_id && (student.submission_text || student.has_file);
+    
+    row.innerHTML = `
+        <td class="px-6 py-4 whitespace-nowrap">
+            <div class="flex items-center">
+                <div class="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center text-gray-600 font-medium text-sm">
+                    ${student.first_name[0]}${student.last_name[0]}
                 </div>
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap">
-                <input type="number" 
-                       class="score-input w-20 px-2 py-1 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500" 
-                       data-enrollment-id="${student.enrollment_id}"
-                       data-original-score="${student.score || ''}"
-                       value="${student.score || ''}" 
-                       min="0" 
-                       max="${assessmentData.max_score}" 
-                       step="0.5"
-                       placeholder="0">
-                <span class="text-sm text-gray-500 ml-1">/ ${assessmentData.max_score}</span>
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap">
-                <span class="percentage-display text-sm font-medium">
-                    ${student.percentage ? student.percentage.toFixed(1) + '%' : '-'}
-                </span>
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap">
-                <span class="grade-letter inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getGradeColor(gradeLetter)}">
-                    ${gradeLetter}
-                </span>
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap">
-                <span class="status-indicator inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(student.status)}">
-                    ${getStatusText(student.status)}
-                </span>
-            </td>
-            <td class="px-6 py-4">
-                <input type="text" 
-                       class="feedback-input w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm" 
-                       data-enrollment-id="${student.enrollment_id}"
-                       value="${student.feedback || ''}" 
-                       placeholder="Optional feedback">
-            </td>
-        `;
-        
-        // Add event listeners to inputs
-        const scoreInput = row.querySelector('.score-input');
-        const feedbackInput = row.querySelector('.feedback-input');
-        
+                <div class="ml-4">
+                    <div class="text-sm font-medium text-gray-900">${student.name}</div>
+                    <div class="text-sm text-gray-500">ID: ${student.student_id}</div>
+                </div>
+            </div>
+        </td>
+        <td class="px-6 py-4 whitespace-nowrap">
+            ${hasSubmission ? `
+                <button onclick="viewSubmission(${student.enrollment_id})" 
+                        class="text-blue-600 hover:text-blue-900 text-sm font-medium">
+                    View Submission
+                </button>
+            ` : '<span class="text-gray-400 text-sm">No submission</span>'}
+        </td>
+        <td class="px-6 py-4 whitespace-nowrap">
+            <input type="number" 
+                   class="score-input w-20 px-2 py-1 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500" 
+                   data-enrollment-id="${student.enrollment_id}"
+                   data-original-score="${student.score || ''}"
+                   value="${student.score || ''}" 
+                   min="0" 
+                   max="${assessmentData.max_score}" 
+                   step="0.5"
+                   placeholder="0"
+                   ${!hasSubmission ? 'disabled' : ''}>
+            <span class="text-sm text-gray-500 ml-1">/ ${assessmentData.max_score}</span>
+        </td>
+        <td class="px-6 py-4 whitespace-nowrap">
+            <span class="percentage-display text-sm font-medium">
+                ${student.percentage ? student.percentage.toFixed(1) + '%' : '-'}
+            </span>
+        </td>
+        <td class="px-6 py-4 whitespace-nowrap">
+            <span class="grade-letter inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getGradeColor(gradeLetter)}">
+                ${gradeLetter}
+            </span>
+        </td>
+        <td class="px-6 py-4 whitespace-nowrap">
+            <span class="status-indicator inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(student.status)}">
+                ${getStatusText(student.status)}
+            </span>
+        </td>
+        <td class="px-6 py-4">
+            <input type="text" 
+                   class="feedback-input w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm" 
+                   data-enrollment-id="${student.enrollment_id}"
+                   value="${student.feedback || ''}" 
+                   placeholder="Optional feedback">
+        </td>
+    `;
+    
+    // Add event listeners to inputs (rest of the function remains the same)
+    const scoreInput = row.querySelector('.score-input');
+    const feedbackInput = row.querySelector('.feedback-input');
+    
+    if (scoreInput && !scoreInput.disabled) {
         scoreInput.addEventListener('input', function() {
             handleScoreChange(this, student, row);
         });
@@ -233,17 +464,20 @@ document.addEventListener('DOMContentLoaded', function() {
         scoreInput.addEventListener('blur', function() {
             autoSaveGrade(student.enrollment_id);
         });
-        
-        feedbackInput.addEventListener('input', function() {
-            handleFeedbackChange(this, student);
-        });
-        
-        feedbackInput.addEventListener('blur', function() {
-            autoSaveGrade(student.enrollment_id);
-        });
-        
-        return row;
     }
+    
+    feedbackInput.addEventListener('input', function() {
+        handleFeedbackChange(this, student);
+    });
+    
+    feedbackInput.addEventListener('blur', function() {
+        autoSaveGrade(student.enrollment_id);
+    });
+    
+    return row;
+}
+        
+     
     
     function handleScoreChange(input, student, row) {
         const score = parseFloat(input.value);
@@ -550,4 +784,7 @@ document.addEventListener('DOMContentLoaded', function() {
         console.error(message);
         alert(message); // Simple error display for now
     }
+
+
+     window.viewSubmission = viewSubmission;
 });

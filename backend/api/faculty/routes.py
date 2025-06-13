@@ -9,7 +9,10 @@ from backend.utils.api import api_response, error_response
 from datetime import datetime, date
 import logging
 from backend.extensions import db 
-from backend.models import User, CourseOffering 
+from backend.models import User, CourseOffering
+import os
+from flask import send_file, current_app
+from werkzeug.utils import secure_filename 
 
 
 logger = logging.getLogger(__name__)
@@ -987,3 +990,130 @@ def update_profile():
         logger.error(f"Error updating faculty profile: {str(e)}")
         db.session.rollback()
         return error_response('Failed to update profile', 500)
+    
+@faculty_bp.route('/submissions/<int:submission_id>', methods=['GET'])
+@jwt_required()
+@faculty_required
+def get_submission_details(submission_id):
+    """Get detailed submission information"""
+    try:
+        # Get submission with student and assessment details
+        submission = db.session.query(
+            AssessmentSubmission,
+            User.first_name,
+            User.last_name,
+            Student.student_id,
+            Assessment.title,
+            Assessment.max_score
+        ).join(
+            Enrollment, Enrollment.enrollment_id == AssessmentSubmission.enrollment_id
+        ).join(
+            Student, Student.student_id == Enrollment.student_id
+        ).join(
+            User, User.user_id == Student.user_id
+        ).join(
+            Assessment, Assessment.assessment_id == AssessmentSubmission.assessment_id
+        ).filter(
+            AssessmentSubmission.submission_id == submission_id
+        ).first()
+        
+        if not submission:
+            return error_response('Submission not found', 404)
+        
+        # TODO: Verify faculty teaches this course
+        
+        submission_data = submission[0].to_dict()
+        submission_data['student_name'] = f"{submission[1]} {submission[2]}"
+        submission_data['student_id'] = submission[3]
+        submission_data['assessment_title'] = submission[4]
+        submission_data['max_score'] = float(submission[5])
+        
+        return api_response(submission_data, 'Submission details retrieved successfully')
+        
+    except Exception as e:
+        logger.error(f"Error getting submission details: {str(e)}")
+        return error_response('Failed to get submission details', 500)
+    
+@faculty_bp.route('/submissions/<int:submission_id>/download', methods=['GET'])
+@jwt_required()
+@faculty_required
+def download_submission(submission_id):
+    """Download submission file"""
+    try:
+        submission = AssessmentSubmission.query.get(submission_id)
+        
+        if not submission:
+            return error_response('Submission not found', 404)
+        
+        if not submission.file_path:
+            return error_response('No file attached to this submission', 404)
+        
+        # TODO: Verify faculty teaches this course
+        
+        # Construct file path
+        file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], submission.file_path)
+        
+        if not os.path.exists(file_path):
+            return error_response('File not found on server', 404)
+        
+        return send_file(
+            file_path,
+            download_name=submission.file_name or 'submission',
+            as_attachment=True,
+            mimetype=submission.mime_type or 'application/octet-stream'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error downloading submission: {str(e)}")
+        return error_response('Failed to download submission', 500)
+    
+@faculty_bp.route('/assessments/<int:assessment_id>/submissions', methods=['GET'])
+@jwt_required()
+@faculty_required
+def get_assessment_submissions(assessment_id):
+    """Get all submissions for an assessment with student details"""
+    try:
+        # Get assessment details first
+        assessment = Assessment.query.get(assessment_id)
+        if not assessment:
+            return error_response('Assessment not found', 404)
+        
+        # Get all submissions with student details
+        submissions = db.session.query(
+            AssessmentSubmission,
+            User.first_name,
+            User.last_name,
+            Student.student_id,
+            Enrollment.enrollment_id
+        ).join(
+            Enrollment, Enrollment.enrollment_id == AssessmentSubmission.enrollment_id
+        ).join(
+            Student, Student.student_id == Enrollment.student_id
+        ).join(
+            User, User.user_id == Student.user_id
+        ).filter(
+            AssessmentSubmission.assessment_id == assessment_id
+        ).order_by(
+            User.last_name, User.first_name
+        ).all()
+        
+        # TODO: Verify faculty teaches this course
+        
+        result = []
+        for submission, first_name, last_name, student_id, enrollment_id in submissions:
+            sub_dict = submission.to_dict()
+            sub_dict['student_name'] = f"{first_name} {last_name}"
+            sub_dict['student_id'] = student_id
+            sub_dict['enrollment_id'] = enrollment_id
+            sub_dict['max_score'] = float(assessment.max_score)
+            result.append(sub_dict)
+        
+        return api_response({
+            'submissions': result,
+            'total': len(result),
+            'assessment': assessment.to_dict()
+        }, 'Submissions retrieved successfully')
+        
+    except Exception as e:
+        logger.error(f"Error getting submissions: {str(e)}")
+        return error_response('Failed to get submissions', 500)

@@ -1,7 +1,7 @@
 # backend/services/assessment_service.py - FIXED VERSION
 from backend.models import (
     Assessment, AssessmentType, AssessmentSubmission, Enrollment, 
-    Student, CourseOffering, Course
+    Student, CourseOffering, Course,User 
 )
 from backend.extensions import db
 from datetime import datetime, date
@@ -149,26 +149,27 @@ class AssessmentService:
     
     @staticmethod
     def get_assessment_roster(assessment_id):
-        """Get roster of students for grade entry"""
+        """Get roster with submission details for grade entry"""
         try:
-            # Get the assessment and course info
             assessment = Assessment.query.get(assessment_id)
             if not assessment:
                 return None
             
             # Get all enrolled students with their submissions
-            students = db.session.query(
-                Student.student_id,
-                Student.first_name,
-                Student.last_name,
+            # FIXED: Using Student.first_name and Student.last_name instead of User.first_name/last_name
+            roster = db.session.query(
                 Enrollment.enrollment_id,
+                Student.student_id,
+                Student.first_name,  # Changed from User.first_name
+                Student.last_name,   # Changed from User.last_name
                 AssessmentSubmission.submission_id,
                 AssessmentSubmission.score,
                 AssessmentSubmission.percentage,
+                AssessmentSubmission.feedback,
                 AssessmentSubmission.submission_date,
-                AssessmentSubmission.is_late,
-                AssessmentSubmission.feedback
-            ).select_from(Enrollment).join(
+                AssessmentSubmission.submission_type,
+                AssessmentSubmission.file_path  # Changed from has_file since it's not a column
+            ).join(
                 Student, Student.student_id == Enrollment.student_id
             ).outerjoin(
                 AssessmentSubmission,
@@ -181,32 +182,29 @@ class AssessmentService:
                 Enrollment.enrollment_status == 'enrolled'
             ).order_by(Student.last_name, Student.first_name).all()
             
-            # Format results
-            roster = []
-            for student in students:
-                roster.append({
-                    'student_id': student.student_id,
-                    'enrollment_id': student.enrollment_id,
-                    'name': f"{student.first_name} {student.last_name}",
-                    'first_name': student.first_name,
-                    'last_name': student.last_name,
-                    'submission_id': student.submission_id,
-                    'score': float(student.score) if student.score else None,
-                    'percentage': float(student.percentage) if student.percentage else None,
-                    'submission_date': student.submission_date.isoformat() if student.submission_date else None,
-                    'is_late': student.is_late,
-                    'feedback': student.feedback,
-                    'status': 'graded' if student.score is not None else ('submitted' if student.submission_id else 'not_submitted')
-                })
+            # Format roster data
+            roster_data = []
+            for r in roster:
+                student_data = {
+                    'enrollment_id': r.enrollment_id,
+                    'student_id': r.student_id,
+                    'first_name': r.first_name,
+                    'last_name': r.last_name,
+                    'name': f"{r.first_name} {r.last_name}",
+                    'submission_id': r.submission_id,
+                    'score': float(r.score) if r.score else None,
+                    'percentage': float(r.percentage) if r.percentage else None,
+                    'feedback': r.feedback,
+                    'submission_date': r.submission_date.isoformat() if r.submission_date else None,
+                    'submission_type': r.submission_type,
+                    'has_file': bool(r.file_path) if r.submission_id else False,  # Check file_path to determine if has file
+                    'status': 'graded' if r.score is not None else ('submitted' if r.submission_id else 'not_submitted')
+                }
+                roster_data.append(student_data)
             
             return {
-                'assessment': {
-                    'assessment_id': assessment.assessment_id,
-                    'title': assessment.title,
-                    'max_score': float(assessment.max_score),
-                    'due_date': assessment.due_date.isoformat() if assessment.due_date else None
-                },
-                'roster': roster
+                'assessment': assessment.to_dict(),
+                'roster': roster_data
             }
             
         except Exception as e:

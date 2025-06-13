@@ -75,40 +75,40 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Find the loadAllAssessments function and update the API call
-async function loadAllAssessments() {
-    try {
-        showLoading(true);
-        console.log('Loading all assessments...');
-        allAssessments = [];
-        
-        for (const course of coursesList) {
-            try {
-                // CHANGE THIS LINE - Update the URL pattern
-                const response = await apiClient.get(`faculty/courses/${course.offering_id}/assessments`);
-                
-                if (response.status === 'success' && response.data.assessments) {
-                    const courseAssessments = response.data.assessments.map(assessment => ({
-                        ...assessment,
-                        course_code: course.course_code,
-                        course_name: course.course_name,
-                        offering_id: course.offering_id
-                    }));
-                    allAssessments = [...allAssessments, ...courseAssessments];
+    async function loadAllAssessments() {
+        try {
+            showLoading(true);
+            console.log('Loading all assessments...');
+            allAssessments = [];
+            
+            for (const course of coursesList) {
+                try {
+                    // CHANGE THIS LINE - Update the URL pattern
+                    const response = await apiClient.get(`faculty/courses/${course.offering_id}/assessments`);
+                    
+                    if (response.status === 'success' && response.data.assessments) {
+                        const courseAssessments = response.data.assessments.map(assessment => ({
+                            ...assessment,
+                            course_code: course.course_code,
+                            course_name: course.course_name,
+                            offering_id: course.offering_id
+                        }));
+                        allAssessments = [...allAssessments, ...courseAssessments];
+                    }
+                } catch (error) {
+                    console.error(`Error loading assessments for course ${course.course_code}:`, error);
                 }
-            } catch (error) {
-                console.error(`Error loading assessments for course ${course.course_code}:`, error);
             }
+            
+            filterAssessments();
+            showLoading(false);
+            
+        } catch (error) {
+            console.error('Error loading assessments:', error);
+            showError('Failed to load assessments');
+            showLoading(false);
         }
-        
-        filterAssessments();
-        showLoading(false);
-        
-    } catch (error) {
-        console.error('Error loading assessments:', error);
-        showError('Failed to load assessments');
-        showLoading(false);
     }
-}
     
     function populateCourseFilter() {
         courseFilter.innerHTML = '<option value="">All Courses</option>';
@@ -248,16 +248,25 @@ async function loadAllAssessments() {
                     
                     <!-- Action Buttons -->
                     <div class="flex flex-col space-y-2 ml-4">
+                        <a href="assessment-submissions.html?id=${assessment.assessment_id}" 
+                           class="bg-purple-600 text-white px-3 py-1 rounded text-sm hover:bg-purple-700 text-center flex items-center justify-center">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                            View
+                        </a>
                         <a href="assessment-grade.html?assessment_id=${assessment.assessment_id}" 
-                           class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 text-center">
+                           class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 text-center flex items-center justify-center">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+                            </svg>
                             Grade
                         </a>
-                        <button onclick="viewStatistics(${assessment.assessment_id})" 
-                                class="bg-gray-600 text-white px-3 py-1 rounded text-sm hover:bg-gray-700">
-                            Stats
-                        </button>
                         <button onclick="editAssessment(${assessment.assessment_id})" 
-                                class="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700">
+                                class="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 flex items-center justify-center">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                            </svg>
                             Edit
                         </button>
                     </div>
@@ -287,10 +296,6 @@ async function loadAllAssessments() {
     }
     
     // Global functions for buttons
-    window.viewStatistics = function(assessmentId) {
-        window.location.href = `assessment-statistics.html?assessment_id=${assessmentId}`;
-    };
-    
     window.editAssessment = function(assessmentId) {
         window.location.href = `assessment-edit.html?assessment_id=${assessmentId}`;
     };
