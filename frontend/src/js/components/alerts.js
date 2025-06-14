@@ -4,7 +4,7 @@ class AlertManager {
         this.alertContainer = null;
         this.alertBadge = null;
         this.unreadCount = 0;
-        this.apiClient = window.apiClient; // Use the global apiClient
+        this.apiClient = apiClient; // Use the global apiClient
     }
 
     init() {
@@ -41,7 +41,7 @@ class AlertManager {
         `;
 
         // Add alert bell to navbar
-        const navbar = document.querySelector('.navbar-nav') || document.querySelector('.flex.items-center.space-x-4');
+        const navbar = document.querySelector('.flex.items-center.space-x-4');
         if (navbar) {
             const alertBellHTML = `
                 <div class="relative ml-4">
@@ -253,13 +253,13 @@ window.alertManager = new AlertManager();
 // Initialize when DOM is ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-        if (localStorage.getItem('token')) {
+        if (localStorage.getItem('access_token')) {
             window.alertManager.init();
         }
     });
 } else {
     // DOM is already loaded
-    if (localStorage.getItem('token')) {
+    if (localStorage.getItem('access_token')) {
         window.alertManager.init();
     }
 }

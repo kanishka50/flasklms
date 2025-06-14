@@ -67,3 +67,23 @@ def auth_required(fn):
         return fn(*args, **kwargs)
     
     return wrapper
+
+def admin_required(fn):
+    """Decorator to require admin role"""
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        verify_jwt_in_request()
+        current_user_id = get_jwt_identity()
+        
+        # Get user from database
+        user = User.query.filter_by(user_id=current_user_id).first()
+        
+        if not user or user.user_type != 'admin':
+            return jsonify({
+                'status': 'error',
+                'message': 'Admin access required'
+            }), 403
+        
+        return fn(*args, **kwargs)
+    
+    return wrapper

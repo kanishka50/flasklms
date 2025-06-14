@@ -129,3 +129,5 @@ const apiClient = {
         }
     }
 };
+
+window.apiClient = apiClient;

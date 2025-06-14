@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - University Grade Prediction System</title>
+    
+    <!-- Tailwind CSS -->
+    <link href="../css/tailwind.css" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- Custom CSS -->
+    <link href="../css/main.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+    <div class="min-h-screen">
+        <!-- Navigation -->
+        <nav class="bg-gray-800 text-white shadow-lg">
+            <div class="container mx-auto px-4">
+                <div class="flex justify-between items-center py-4">
+                    <div class="flex items-center">
+                        <i class="fas fa-user-shield text-2xl mr-3"></i>
+                        <h1 class="text-xl font-bold">Admin Panel</h1>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <span id="username" class="text-sm">Admin</span>
+                        <button id="logoutBtn" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded text-sm">
+                            <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Sidebar and Content -->
+        <div class="flex">
+            <!-- Sidebar -->
+            <aside class="w-64 bg-white shadow-md min-h-screen">
+                <nav class="p-4">
+                    <ul class="space-y-2">
+                        <li>
+                            <a href="dashboard.html" class="flex items-center p-3 text-gray-700 hover:bg-gray-100 rounded-md bg-gray-100">
+                                <i class="fas fa-tachometer-alt w-5"></i>
+                                <span class="ml-3">Dashboard</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="users.html" class="flex items-center p-3 text-gray-700 hover:bg-gray-100 rounded-md">
+                                <i class="fas fa-users w-5"></i>
+                                <span class="ml-3">User Management</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="courses.html" class="flex items-center p-3 text-gray-700 hover:bg-gray-100 rounded-md">
+                                <i class="fas fa-book w-5"></i>
+                                <span class="ml-3">Course Management</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="system-alerts.html" class="flex items-center p-3 text-gray-700 hover:bg-gray-100 rounded-md">
+                                <i class="fas fa-bell w-5"></i>
+                                <span class="ml-3">System Alerts</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="predictions.html" class="flex items-center p-3 text-gray-700 hover:bg-gray-100 rounded-md">
+                                <i class="fas fa-chart-line w-5"></i>
+                                <span class="ml-3">Predictions Overview</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="reports.html" class="flex items-center p-3 text-gray-700 hover:bg-gray-100 rounded-md">
+                                <i class="fas fa-file-alt w-5"></i>
+                                <span class="ml-3">Reports</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="settings.html" class="flex items-center p-3 text-gray-700 hover:bg-gray-100 rounded-md">
+                                <i class="fas fa-cog w-5"></i>
+                                <span class="ml-3">System Settings</span>
+                            </a>
+                        </li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- Main Content -->
+            <main class="flex-1 p-6">
+                <!-- Dashboard Header -->
+                <div class="mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800">System Overview</h2>
+                    <p class="text-gray-600">Welcome to the admin dashboard</p>
+                </div>
+
+                <!-- Statistics Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <!-- Total Users -->
+                    <div class="bg-white rounded-lg shadow-md p-6">
+                        <div class="flex items-center">
+                            <div class="rounded-full bg-blue-100 p-3">
+                                <i class="fas fa-users text-blue-600 text-xl"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-gray-500 text-sm">Total Users</p>
+                                <p class="text-2xl font-bold" id="totalUsers">-</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Active Students -->
+                    <div class="bg-white rounded-lg shadow-md p-6">
+                        <div class="flex items-center">
+                            <div class="rounded-full bg-green-100 p-3">
+                                <i class="fas fa-user-graduate text-green-600 text-xl"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-gray-500 text-sm">Active Students</p>
+                                <p class="text-2xl font-bold" id="activeStudents">-</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Faculty Members -->
+                    <div class="bg-white rounded-lg shadow-md p-6">
+                        <div class="flex items-center">
+                            <div class="rounded-full bg-purple-100 p-3">
+                                <i class="fas fa-chalkboard-teacher text-purple-600 text-xl"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-gray-500 text-sm">Faculty Members</p>
+                                <p class="text-2xl font-bold" id="facultyCount">-</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Active Courses -->
+                    <div class="bg-white rounded-lg shadow-md p-6">
+                        <div class="flex items-center">
+                            <div class="rounded-full bg-yellow-100 p-3">
+                                <i class="fas fa-book-open text-yellow-600 text-xl"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-gray-500 text-sm">Active Courses</p>
+                                <p class="text-2xl font-bold" id="activeCourses">-</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Activities and System Status -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <!-- Recent Activities -->
+                    <div class="bg-white rounded-lg shadow-md">
+                        <div class="border-b px-6 py-4">
+                            <h3 class="text-lg font-semibold">Recent Activities</h3>
+                        </div>
+                        <div class="p-6">
+                            <div id="recentActivities" class="space-y-4">
+                                <p class="text-gray-500">Loading activities...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- System Status -->
+                    <div class="bg-white rounded-lg shadow-md">
+                        <div class="border-b px-6 py-4">
+                            <h3 class="text-lg font-semibold">System Status</h3>
+                        </div>
+                        <div class="p-6">
+                            <div class="space-y-4">
+                                <div class="flex justify-between items-center">
+                                    <span class="text-gray-600">Database</span>
+                                    <span class="text-green-600 font-medium">
+                                        <i class="fas fa-check-circle mr-1"></i>Operational
+                                    </span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-gray-600">ML Model</span>
+                                    <span class="text-green-600 font-medium">
+                                        <i class="fas fa-check-circle mr-1"></i>Active
+                                    </span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-gray-600">Email Service</span>
+                                    <span class="text-green-600 font-medium">
+                                        <i class="fas fa-check-circle mr-1"></i>Running
+                                    </span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-gray-600">Alert System</span>
+                                    <span class="text-green-600 font-medium">
+                                        <i class="fas fa-check-circle mr-1"></i>Active
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="mt-4 pt-4 border-t">
+                                <p class="text-sm text-gray-500">Last checked: <span id="lastChecked">Just now</span></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h3 class="text-lg font-semibold mb-4">Quick Actions</h3>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <a href="users.html?action=add" class="flex flex-col items-center p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
+                            <i class="fas fa-user-plus text-2xl text-blue-600 mb-2"></i>
+                            <span class="text-sm">Add User</span>
+                        </a>
+                        <a href="courses.html?action=add" class="flex flex-col items-center p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
+                            <i class="fas fa-plus-circle text-2xl text-green-600 mb-2"></i>
+                            <span class="text-sm">Add Course</span>
+                        </a>
+                        <a href="reports.html?action=generate" class="flex flex-col items-center p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
+                            <i class="fas fa-file-export text-2xl text-purple-600 mb-2"></i>
+                            <span class="text-sm">Generate Report</span>
+                        </a>
+                        <a href="settings.html" class="flex flex-col items-center p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
+                            <i class="fas fa-cogs text-2xl text-gray-600 mb-2"></i>
+                            <span class="text-sm">Settings</span>
+                        </a>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- JavaScript Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.2/dist/axios.min.js"></script>
+    
+    <!-- Custom JavaScript -->
+    <script src="../js/api/client.js"></script>
+    <script src="../js/api/auth.js"></script>
+    <script src="../js/utils/auth-guard.js"></script>
+    <script src="../js/admin/dashboard.js"></script>
+</body>
+</html>
