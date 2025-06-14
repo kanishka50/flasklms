@@ -15,6 +15,7 @@ import logging
 from backend.extensions import db 
 import os
 from werkzeug.utils import secure_filename
+from backend.services.prediction_service import PredictionService
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
@@ -22,6 +23,8 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 logger = logging.getLogger(__name__)
+# Initialize the prediction service
+prediction_service = PredictionService()
 
 student_bp = Blueprint('student', __name__, url_prefix='/api/student')
 
@@ -908,4 +911,84 @@ def get_grades_summary():
     except Exception as e:
         logger.error(f"Error getting grades summary: {str(e)}")
         return error_response('Failed to get grades summary', 500)
+    
+@student_bp.route('/predictions', methods=['GET'])
+@jwt_required()
+def get_student_predictions():
+    """Get all predictions for the current student"""
+    try:
+        user_id = get_jwt_identity()
+        
+        # Get student from user
+        student = Student.query.filter_by(user_id=user_id).first()
+        if not student:
+            return error_response('Student profile not found', 404)
+        
+        # Get all enrollments for this student
+        enrollments = Enrollment.query.filter_by(
+            student_id=student.student_id,
+            enrollment_status='enrolled'
+        ).all()
+        
+        predictions_data = []
+        
+        for enrollment in enrollments:
+            # Get latest prediction for each enrollment
+            latest_prediction = prediction_service.get_latest_prediction(enrollment.enrollment_id)
+            
+            predictions_data.append({
+                'enrollment_id': enrollment.enrollment_id,
+                'course': {
+                    'course_code': enrollment.offering.course.course_code,
+                    'course_name': enrollment.offering.course.course_name,
+                    'offering_id': enrollment.offering_id
+                },
+                'prediction': latest_prediction if latest_prediction else None
+            })
+        
+        return api_response({
+            'student': {
+                'id': student.student_id,
+                'name': f"{student.first_name} {student.last_name}"
+            },
+            'predictions': predictions_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting student predictions: {str(e)}")
+        return error_response(f"Error retrieving predictions: {str(e)}")
+    
+@student_bp.route('/enrollments', methods=['GET'])
+@jwt_required()
+def get_student_enrollments():
+    """Get all enrollments for the current student"""
+    try:
+        user_id = get_jwt_identity()
+        
+        # Get student from user
+        student = Student.query.filter_by(user_id=user_id).first()
+        if not student:
+            return error_response('Student profile not found', 404)
+        
+        # Get enrollments
+        enrollments = Enrollment.query.filter_by(
+            student_id=student.student_id,
+            enrollment_status='enrolled'
+        ).all()
+        
+        enrollments_data = []
+        for e in enrollments:
+            enrollments_data.append({
+                'enrollment_id': e.enrollment_id,
+                'course_name': f"{e.offering.course.course_code} - {e.offering.course.course_name}",
+                'course_code': e.offering.course.course_code,
+                'offering_id': e.offering_id
+            })
+        
+        return api_response(enrollments_data)
+        
+    except Exception as e:
+        logger.error(f"Error getting enrollments: {str(e)}")
+        return error_response(f"Error retrieving enrollments: {str(e)}")
+
     

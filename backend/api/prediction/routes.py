@@ -1,350 +1,345 @@
-# backend/api/prediction/routes.py (REPLACE EXISTING FILE)
 from flask import Blueprint, request, jsonify, current_app
-from backend.models import Prediction, Student, Enrollment
-from backend.extensions import db
-from backend.services.prediction_service import MLPredictionService
-from backend.services.feature_calculator_service import WebAppFeatureCalculator
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from sqlalchemy import text
-import logging
 from datetime import datetime
+from backend.models import Enrollment, Student, Faculty, CourseOffering
+from backend.services.prediction_service import PredictionService
+from backend.services.model_service import ModelService
+from backend.utils.api import api_response, error_response
+from backend.utils.decorators import role_required
+from backend.extensions import db
+import logging
 
-logger = logging.getLogger('prediction')
+logger = logging.getLogger(__name__)
 
 prediction_bp = Blueprint('prediction', __name__)
 
-# Initialize services (lazy loading)
-_prediction_service = None
-_feature_calculator = None
-
-def get_prediction_service():
-    global _prediction_service
-    if _prediction_service is None:
-        _prediction_service = MLPredictionService()
-    return _prediction_service
-
-def get_feature_calculator():
-    global _feature_calculator
-    if _feature_calculator is None:
-        _feature_calculator = WebAppFeatureCalculator()
-    return _feature_calculator
+# Initialize services
+prediction_service = PredictionService()
+model_service = ModelService()
 
 @prediction_bp.route('/health', methods=['GET'])
 def health_check():
-    """Check if prediction service is working"""
+    """Check if prediction system is healthy"""
     try:
-        prediction_service = get_prediction_service()
-        model_info = prediction_service.get_model_info()
-        return jsonify({
-            'status': 'success',
-            'message': 'Prediction service is healthy',
-            'data': model_info
-        })
+        model_info = model_service.get_model_info()
+        return api_response({
+            'status': 'healthy',
+            'model': model_info
+        }, message="Prediction system is operational")
     except Exception as e:
-        return jsonify({
-            'status': 'error',
-            'message': f'Prediction service error: {str(e)}'
-        }), 500
+        return error_response(f"Prediction system error: {str(e)}", 503)
 
 @prediction_bp.route('/model/info', methods=['GET'])
 @jwt_required()
 def get_model_info():
     """Get information about the loaded model"""
     try:
-        prediction_service = get_prediction_service()
-        model_info = prediction_service.get_model_info()
-        return jsonify({
-            'status': 'success',
-            'message': 'Model information retrieved successfully',
-            'data': model_info
-        })
-    except Exception as e:
-        return jsonify({
-            'status': 'error',
-            'message': f'Failed to get model info: {str(e)}'
-        }), 500
-
-@prediction_bp.route('/student/<int:enrollment_id>', methods=['GET'])
-@jwt_required()
-def get_student_prediction(enrollment_id):
-    """Get latest prediction for a student"""
-    try:
-        # Get latest prediction from database
-        latest_prediction = db.session.query(Prediction)\
-            .filter_by(enrollment_id=enrollment_id)\
-            .order_by(Prediction.prediction_date.desc())\
-            .first()
+        model_info = model_service.get_model_info()
+        feature_importance = model_service.get_feature_importance()
         
-        if not latest_prediction:
-            return jsonify({
-                'status': 'error',
-                'message': 'No predictions found for this enrollment'
-            }), 404
-        
-        return jsonify({
-            'status': 'success',
-            'message': 'Prediction retrieved successfully',
-            'data': latest_prediction.to_dict()
-        })
-        
-    except Exception as e:
-        logger.error(f"Error retrieving prediction for enrollment {enrollment_id}: {str(e)}")
-        return jsonify({
-            'status': 'error',
-            'message': 'Failed to retrieve prediction'
-        }), 500
-
-@prediction_bp.route('/student/<int:enrollment_id>/generate', methods=['POST'])
-@jwt_required()
-def generate_student_prediction(enrollment_id):
-    """Generate new prediction for a student"""
-    try:
-        # Check if enrollment exists
-        enrollment = db.session.get(Enrollment, enrollment_id)
-        if not enrollment:
-            return jsonify({
-                'status': 'error',
-                'message': 'Enrollment not found'
-            }), 404
-        
-        # Generate prediction
-        prediction_service = get_prediction_service()
-        prediction_result = prediction_service.predict_student_grade(enrollment_id)
-        
-        return jsonify({
-            'status': 'success',
-            'message': 'Prediction generated successfully',
-            'data': prediction_result
-        })
-        
-    except Exception as e:
-        logger.error(f"Error generating prediction for enrollment {enrollment_id}: {str(e)}")
-        return jsonify({
-            'status': 'error',
-            'message': f'Failed to generate prediction: {str(e)}'
-        }), 500
-
-@prediction_bp.route('/features/<int:enrollment_id>', methods=['GET'])
-@jwt_required()
-def get_student_features(enrollment_id):
-    """Calculate and return features for a student (for debugging)"""
-    try:
-        feature_calculator = get_feature_calculator()
-        features = feature_calculator.calculate_features_for_student(enrollment_id)
-        
-        # Validate features
-        prediction_service = get_prediction_service()
-        validation = prediction_service.validate_features(features)
-        
-        return jsonify({
-            'status': 'success',
-            'message': 'Features calculated successfully',
-            'data': {
-                'enrollment_id': enrollment_id,
-                'features': features,
-                'validation': validation,
-                'feature_count': len(features)
+        return api_response({
+            'model_info': model_info,
+            'features': {
+                'count': len(model_service.get_feature_list()),
+                'names': model_service.get_feature_list(),
+                'importance': feature_importance
             }
         })
+    except Exception as e:
+        return error_response(f"Error getting model info: {str(e)}")
+
+@prediction_bp.route('/student/<string:enrollment_id>/generate', methods=['POST'])
+@jwt_required()
+def generate_student_prediction(enrollment_id):
+    """Generate a new prediction for a student enrollment"""
+    try:
+        # Verify access rights
+        user_id = get_jwt_identity()
+        enrollment = Enrollment.query.get(enrollment_id)
+        
+        if not enrollment:
+            return error_response("Enrollment not found", 404)
+        
+        # Check if user has access (student can view own, faculty can view their students)
+        if not _has_access_to_enrollment(user_id, enrollment):
+            return error_response("Access denied", 403)
+        
+        # Generate prediction
+        prediction = prediction_service.generate_prediction(int(enrollment_id))
+        
+        return api_response({
+            'prediction': prediction,
+            'student': {
+                'id': enrollment.student_id,
+                'name': f"{enrollment.student.first_name} {enrollment.student.last_name}"
+            }
+        }, message="Prediction generated successfully")
         
     except Exception as e:
-        logger.error(f"Error calculating features for enrollment {enrollment_id}: {str(e)}")
-        return jsonify({
-            'status': 'error',
-            'message': f'Failed to calculate features: {str(e)}'
-        }), 500
+        logger.error(f"Error generating prediction: {str(e)}")
+        return error_response(f"Error generating prediction: {str(e)}")
+
+@prediction_bp.route('/student/<string:enrollment_id>', methods=['GET'])
+@jwt_required()
+def get_student_predictions(enrollment_id):
+    """Get prediction history for a student enrollment"""
+    try:
+        # Verify access rights
+        user_id = get_jwt_identity()
+        enrollment = Enrollment.query.get(enrollment_id)
+        
+        if not enrollment:
+            return error_response("Enrollment not found", 404)
+        
+        if not _has_access_to_enrollment(user_id, enrollment):
+            return error_response("Access denied", 403)
+        
+        # Get prediction history
+        limit = request.args.get('limit', 10, type=int)
+        predictions = prediction_service.get_prediction_history(int(enrollment_id), limit)
+        
+        # Get latest prediction with explanation
+        latest = prediction_service.get_latest_prediction(int(enrollment_id))
+        
+        return api_response({
+            'enrollment_id': enrollment_id,
+            'student': {
+                'id': enrollment.student_id,
+                'name': f"{enrollment.student.first_name} {enrollment.student.last_name}"
+            },
+            'latest_prediction': latest,
+            'history': predictions,
+            'count': len(predictions)
+        })
+        
+    except Exception as e:
+        return error_response(f"Error retrieving predictions: {str(e)}")
+
+@prediction_bp.route('/course/<int:offering_id>/generate', methods=['POST'])
+@jwt_required()
+@role_required(['faculty', 'admin'])
+def generate_course_predictions(offering_id):
+    """Generate predictions for all students in a course (faculty/admin only)"""
+    try:
+        # Verify course exists and user has access
+        offering = CourseOffering.query.get(offering_id)
+        if not offering:
+            return error_response("Course offering not found", 404)
+        
+        user_id = get_jwt_identity()
+        # Check if faculty teaches this course
+        if not _has_access_to_course(user_id, offering):
+            return error_response("Access denied to this course", 403)
+        
+        # Generate batch predictions
+        results = prediction_service.batch_generate_predictions(offering_id)
+        
+        # Summary statistics
+        success_count = sum(1 for r in results if r['status'] == 'success')
+        at_risk_count = sum(
+            1 for r in results 
+            if r['status'] == 'success' and 
+            r['prediction']['risk_level'] in ['medium', 'high']
+        )
+        
+        return api_response({
+            'offering_id': offering_id,
+            'course': {
+                'code': offering.course.course_code,
+                'name': offering.course.course_name
+            },
+            'summary': {
+                'total_students': len(results),
+                'predictions_generated': success_count,
+                'at_risk_students': at_risk_count,
+                'errors': len(results) - success_count
+            },
+            'results': results
+        }, message="Batch predictions completed")
+        
+    except Exception as e:
+        logger.error(f"Error in batch prediction: {str(e)}")
+        return error_response(f"Error generating predictions: {str(e)}")
 
 @prediction_bp.route('/course/<int:offering_id>', methods=['GET'])
 @jwt_required()
 def get_course_predictions(offering_id):
-    """Get predictions for all students in a course"""
+    """Get all predictions for students in a course"""
     try:
-        # Get all enrollments for this course offering
-        enrollments = db.session.query(Enrollment)\
-            .filter_by(offering_id=offering_id)\
-            .filter_by(enrollment_status='enrolled')\
-            .all()
+        # Verify access
+        offering = CourseOffering.query.get(offering_id)
+        if not offering:
+            return error_response("Course offering not found", 404)
         
-        if not enrollments:
-            return jsonify({
-                'status': 'error',
-                'message': 'No active enrollments found for this course'
-            }), 404
+        user_id = get_jwt_identity()
+        if not _has_access_to_course(user_id, offering):
+            return error_response("Access denied", 403)
         
-        # Get latest predictions for each enrollment
+        # Get enrollments with latest predictions
+        enrollments = Enrollment.query.filter_by(
+            offering_id=offering_id,
+            enrollment_status='enrolled'
+        ).all()
+        
         predictions = []
         for enrollment in enrollments:
-            latest_prediction = db.session.query(Prediction)\
-                .filter_by(enrollment_id=enrollment.enrollment_id)\
-                .order_by(Prediction.prediction_date.desc())\
-                .first()
-            
-            if latest_prediction:
-                prediction_data = latest_prediction.to_dict()
-                prediction_data['student_info'] = {
-                    'student_id': enrollment.student_id,
-                    'name': f"{enrollment.student.first_name} {enrollment.student.last_name}"
-                }
-                predictions.append(prediction_data)
+            latest_pred = prediction_service.get_latest_prediction(enrollment.enrollment_id)
+            if latest_pred:
+                predictions.append({
+                    'student': {
+                        'id': enrollment.student_id,
+                        'name': f"{enrollment.student.first_name} {enrollment.student.last_name}"
+                    },
+                    'enrollment_id': enrollment.enrollment_id,
+                    'prediction': latest_pred
+                })
         
-        return jsonify({
-            'status': 'success',
-            'message': 'Course predictions retrieved successfully',
-            'data': {
-                'course_offering_id': offering_id,
-                'total_students': len(enrollments),
-                'predictions_available': len(predictions),
-                'predictions': predictions
-            }
+        # Sort by risk level (high risk first)
+        risk_order = {'high': 0, 'medium': 1, 'low': 2}
+        predictions.sort(
+            key=lambda x: risk_order.get(x['prediction']['risk_level'], 3)
+        )
+        
+        return api_response({
+            'offering_id': offering_id,
+            'course': {
+                'code': offering.course.course_code,
+                'name': offering.course.course_name
+            },
+            'predictions': predictions,
+            'count': len(predictions)
         })
         
     except Exception as e:
-        logger.error(f"Error retrieving course predictions for offering {offering_id}: {str(e)}")
-        return jsonify({
-            'status': 'error',
-            'message': 'Failed to retrieve course predictions'
-        }), 500
-
-@prediction_bp.route('/course/<int:offering_id>/generate', methods=['POST'])
-@jwt_required()
-def generate_course_predictions(offering_id):
-    """Generate predictions for all students in a course"""
-    try:
-        # Get all active enrollments for this course
-        enrollments = db.session.query(Enrollment)\
-            .filter_by(offering_id=offering_id)\
-            .filter_by(enrollment_status='enrolled')\
-            .all()
-        
-        if not enrollments:
-            return jsonify({
-                'status': 'error',
-                'message': 'No active enrollments found for this course'
-            }), 404
-        
-        # Generate predictions for all students
-        prediction_service = get_prediction_service()
-        enrollment_ids = [e.enrollment_id for e in enrollments]
-        prediction_results = prediction_service.predict_batch(enrollment_ids)
-        
-        # Count successful vs failed predictions
-        successful = [p for p in prediction_results if 'error' not in p]
-        failed = [p for p in prediction_results if 'error' in p]
-        
-        return jsonify({
-            'status': 'success',
-            'message': f'Generated {len(successful)} predictions successfully',
-            'data': {
-                'course_offering_id': offering_id,
-                'total_students': len(enrollments),
-                'successful_predictions': len(successful),
-                'failed_predictions': len(failed),
-                'predictions': prediction_results
-            }
-        })
-        
-    except Exception as e:
-        logger.error(f"Error generating course predictions for offering {offering_id}: {str(e)}")
-        return jsonify({
-            'status': 'error',
-            'message': 'Failed to generate course predictions'
-        }), 500
+        return error_response(f"Error retrieving predictions: {str(e)}")
 
 @prediction_bp.route('/at-risk', methods=['GET'])
 @jwt_required()
+@role_required(['faculty', 'admin'])
 def get_at_risk_students():
-    """Get all students with high or medium risk predictions"""
+    """Get all at-risk students (faculty/admin only)"""
     try:
-        # Get latest high/medium risk predictions using raw SQL for compatibility
-        at_risk_query = text("""
-            SELECT p.prediction_id, p.enrollment_id, p.predicted_grade, 
-                   p.confidence_score, p.risk_level, p.prediction_date,
-                   e.student_id, s.first_name, s.last_name, 
-                   c.course_code, c.course_name
-            FROM predictions p
-            JOIN enrollments e ON p.enrollment_id = e.enrollment_id
-            JOIN students s ON e.student_id = s.student_id
-            JOIN course_offerings co ON e.offering_id = co.offering_id
-            JOIN courses c ON co.course_id = c.course_id
-            WHERE p.risk_level IN ('high', 'medium')
-            AND p.prediction_id IN (
-                SELECT MAX(prediction_id) 
-                FROM predictions 
-                GROUP BY enrollment_id
-            )
-            ORDER BY 
-                CASE p.risk_level 
-                    WHEN 'high' THEN 1 
-                    WHEN 'medium' THEN 2 
-                    ELSE 3 
-                END,
-                p.confidence_score ASC
-        """)
+        # Get query parameters
+        offering_id = request.args.get('offering_id', type=int)
+        risk_levels = request.args.getlist('risk_level') or ['high', 'medium']
         
-        result = db.engine.execute(at_risk_query)
-        at_risk_students = []
+        # Get at-risk students
+        at_risk = prediction_service.get_at_risk_students(offering_id, risk_levels)
         
-        for row in result:
-            at_risk_students.append({
-                'prediction_id': row.prediction_id,
-                'enrollment_id': row.enrollment_id,
-                'student_id': row.student_id,
-                'student_name': f"{row.first_name} {row.last_name}",
-                'course_code': row.course_code,
-                'course_name': row.course_name,
-                'predicted_grade': row.predicted_grade,
-                'confidence_score': float(row.confidence_score),
-                'risk_level': row.risk_level,
-                'prediction_date': row.prediction_date.isoformat()
-            })
-        
-        return jsonify({
-            'status': 'success',
-            'message': 'At-risk students retrieved successfully',
-            'data': {
-                'total_at_risk': len(at_risk_students),
-                'high_risk': len([s for s in at_risk_students if s['risk_level'] == 'high']),
-                'medium_risk': len([s for s in at_risk_students if s['risk_level'] == 'medium']),
-                'students': at_risk_students
-            }
+        return api_response({
+            'filters': {
+                'offering_id': offering_id,
+                'risk_levels': risk_levels
+            },
+            'students': at_risk,
+            'count': len(at_risk)
         })
         
     except Exception as e:
-        logger.error(f"Error retrieving at-risk students: {str(e)}")
-        return jsonify({
-            'status': 'error',
-            'message': 'Failed to retrieve at-risk students'
-        }), 500
+        return error_response(f"Error retrieving at-risk students: {str(e)}")
 
-# Add a simple test endpoint for checking enrollments
-@prediction_bp.route('/test/enrollments', methods=['GET'])
+@prediction_bp.route('/features/<string:enrollment_id>', methods=['GET'])
 @jwt_required()
-def test_enrollments():
-    """Test endpoint to see available enrollments"""
+def get_student_features(enrollment_id):
+    """Get calculated features for a student (for debugging/transparency)"""
     try:
-        enrollments = db.session.query(Enrollment)\
-            .filter_by(enrollment_status='enrolled')\
-            .limit(5)\
-            .all()
+        # Verify access
+        user_id = get_jwt_identity()
+        enrollment = Enrollment.query.get(enrollment_id)
         
-        enrollment_data = []
-        for e in enrollments:
-            enrollment_data.append({
-                'enrollment_id': e.enrollment_id,
-                'student_id': e.student_id,
-                'student_name': f"{e.student.first_name} {e.student.last_name}",
-                'course': f"{e.offering.course.course_code}",
-                'enrollment_date': e.enrollment_date.isoformat()
+        if not enrollment:
+            return error_response("Enrollment not found", 404)
+        
+        if not _has_access_to_enrollment(user_id, enrollment):
+            return error_response("Access denied", 403)
+        
+        # Get cached features if available
+        from backend.models import FeatureCache
+        cached = FeatureCache.query.filter_by(
+            enrollment_id=enrollment_id
+        ).order_by(FeatureCache.calculated_at.desc()).first()
+        
+        if cached:
+            return api_response({
+                'enrollment_id': enrollment_id,
+                'features': cached.to_dict(),
+                'cached': True
             })
+        else:
+            # Calculate features on demand
+            from backend.services.feature_calculator import FeatureCalculator
+            calculator = FeatureCalculator()
+            features = calculator.calculate_features_for_enrollment(int(enrollment_id))
+            
+            # Convert numpy array to list for JSON serialization
+            feature_dict = {
+                name: float(value) 
+                for name, value in zip(calculator.get_feature_names(), features.flatten())
+            }
+            
+            return api_response({
+                'enrollment_id': enrollment_id,
+                'features': feature_dict,
+                'cached': False
+            })
+            
+    except Exception as e:
+        return error_response(f"Error calculating features: {str(e)}")
+
+@prediction_bp.route('/compare/<string:enrollment_id>', methods=['POST'])
+@jwt_required()
+def compare_predictions(enrollment_id):
+    """Compare predictions between two dates"""
+    try:
+        # Verify access
+        user_id = get_jwt_identity()
+        enrollment = Enrollment.query.get(enrollment_id)
         
-        return jsonify({
-            'status': 'success',
-            'message': f'Found {len(enrollment_data)} enrollments',
-            'data': enrollment_data
+        if not enrollment:
+            return error_response("Enrollment not found", 404)
+        
+        if not _has_access_to_enrollment(user_id, enrollment):
+            return error_response("Access denied", 403)
+        
+        # Get dates from request
+        data = request.get_json()
+        date1 = datetime.fromisoformat(data.get('date1'))
+        date2 = datetime.fromisoformat(data.get('date2'))
+        
+        # Compare predictions
+        comparison = prediction_service.compare_predictions(
+            int(enrollment_id), date1, date2
+        )
+        
+        return api_response({
+            'enrollment_id': enrollment_id,
+            'comparison': comparison
         })
         
     except Exception as e:
-        return jsonify({
-            'status': 'error',
-            'message': str(e)
-        }), 500
+        return error_response(f"Error comparing predictions: {str(e)}")
+
+# Helper functions
+def _has_access_to_enrollment(user_id: str, enrollment: Enrollment) -> bool:
+    """Check if user has access to an enrollment"""
+    # Students can view their own
+    if enrollment.student.user_id == int(user_id):
+        return True
+    
+    # Faculty can view students in their courses
+    faculty = Faculty.query.filter_by(user_id=int(user_id)).first()
+    if faculty and enrollment.course_offering.faculty_id == faculty.faculty_id:
+        return True
+    
+    # Admins can view all (handled by role_required decorator)
+    return False
+
+def _has_access_to_course(user_id: str, offering: CourseOffering) -> bool:
+    """Check if user has access to a course offering"""
+    # Faculty teaching the course
+    faculty = Faculty.query.filter_by(user_id=int(user_id)).first()
+    if faculty and offering.faculty_id == faculty.faculty_id:
+        return True
+    
+    # Admins can access all (handled by role_required decorator)
+    return False

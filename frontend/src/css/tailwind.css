@@ -616,6 +616,10 @@ video {
   visibility: visible;
 }
 
+.collapse {
+  visibility: collapse;
+}
+
 .static {
   position: static;
 }
@@ -777,6 +781,18 @@ video {
 
 .mt-8 {
   margin-top: 2rem;
+}
+
+.ms-auto {
+  margin-inline-start: auto;
+}
+
+.ms-2 {
+  margin-inline-start: 0.5rem;
+}
+
+.mt-5 {
+  margin-top: 1.25rem;
 }
 
 .block {
@@ -1636,6 +1652,10 @@ video {
 
 .text-right {
   text-align: right;
+}
+
+.text-end {
+  text-align: end;
 }
 
 .text-2xl {

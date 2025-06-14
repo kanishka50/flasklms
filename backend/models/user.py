@@ -77,6 +77,17 @@ class Student(db.Model):
     profile_photo = db.Column(db.String(255), nullable=True)
     phone_number = db.Column(db.String(20), nullable=True)
     address = db.Column(db.Text, nullable=True)
+    age_band = db.Column(db.Enum('0-35', '35-55', '55+'), default='0-35')
+    highest_education = db.Column(db.Enum(
+        'No Formal quals', 
+        'Lower Than A Level', 
+        'A Level or Equivalent', 
+        'HE Qualification', 
+        'Post Graduate Qualification'
+    ), default='A Level or Equivalent')
+    num_of_prev_attempts = db.Column(db.Integer, default=0)
+    studied_credits = db.Column(db.Integer, default=60)
+    has_disability = db.Column(db.Boolean, default=False)
     
     # Relationships
     enrollments = db.relationship('Enrollment', backref='student', lazy=True)
@@ -96,6 +107,13 @@ class Student(db.Model):
         self.expected_graduation = kwargs.get('expected_graduation')
         self.gpa = kwargs.get('gpa')
         self.status = kwargs.get('status', 'active')
+
+        # ADD THESE NEW FIELDS:
+        self.age_band = kwargs.get('age_band', '0-35')
+        self.highest_education = kwargs.get('highest_education', 'A Level or Equivalent')
+        self.num_of_prev_attempts = kwargs.get('num_of_prev_attempts', 0)
+        self.studied_credits = kwargs.get('studied_credits', 60)
+        self.has_disability = kwargs.get('has_disability', False)
     
     @property
     def full_name(self):
@@ -117,7 +135,13 @@ class Student(db.Model):
             'enrollment_date': self.enrollment_date.isoformat() if self.enrollment_date else None,
             'expected_graduation': self.expected_graduation.isoformat() if self.expected_graduation else None,
             'gpa': float(self.gpa) if self.gpa else None,
-            'status': self.status
+            'status': self.status,
+            'age_band': self.age_band,
+            'highest_education': self.highest_education,
+            'num_of_prev_attempts': self.num_of_prev_attempts,
+            'studied_credits': self.studied_credits,
+            'has_disability': self.has_disability
+
         }
     
     def __repr__(self):

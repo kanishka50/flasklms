@@ -42,6 +42,9 @@ class Assessment(db.Model):
     description = db.Column(db.Text, nullable=True)
     is_published = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    assessment_type_mapped = db.Column(db.Enum(
+        'CMA', 'TMA', 'Exam', 'Assignment', 'Quiz'
+    ), default='Assignment')
     
     # Relationships
     submissions = db.relationship('AssessmentSubmission', backref='assessment', lazy=True)
@@ -57,6 +60,9 @@ class Assessment(db.Model):
         self.weight = kwargs.get('weight')
         self.description = kwargs.get('description')
         self.is_published = kwargs.get('is_published', False)
+
+        # ADD THIS:
+        self.assessment_type_mapped = kwargs.get('assessment_type_mapped', 'Assignment')
     
     def to_dict(self):
         """Convert assessment to dictionary for API responses"""
@@ -71,7 +77,8 @@ class Assessment(db.Model):
             'description': self.description,
             'is_published': self.is_published,
             'created_at': self.created_at.isoformat() if self.created_at else None,
-            'assessment_type': self.assessment_type.to_dict() if self.assessment_type else None
+            'assessment_type': self.assessment_type.to_dict() if self.assessment_type else None,
+            'assessment_type_mapped': self.assessment_type_mapped
         }
     
     def __repr__(self):

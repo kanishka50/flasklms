@@ -14,6 +14,8 @@ class Prediction(db.Model):
     model_version = db.Column(db.String(20), nullable=False)
     feature_snapshot = db.Column(db.JSON, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    model_accuracy = db.Column(db.Numeric(5, 2), nullable=True)
+    feature_version = db.Column(db.String(20), default='v1.0')
     
     def __init__(self, enrollment_id, prediction_date, predicted_grade, confidence_score, risk_level, model_version, feature_snapshot=None):
         self.enrollment_id = enrollment_id
@@ -23,6 +25,9 @@ class Prediction(db.Model):
         self.risk_level = risk_level
         self.model_version = model_version
         self.feature_snapshot = feature_snapshot
+
+        self.model_accuracy = None
+        self.feature_version = 'v1.0'
     
     def to_dict(self):
         """Convert prediction to dictionary for API responses"""
@@ -35,7 +40,9 @@ class Prediction(db.Model):
             'risk_level': self.risk_level,
             'model_version': self.model_version,
             'feature_snapshot': self.feature_snapshot,
-            'created_at': self.created_at.isoformat() if self.created_at else None
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'model_accuracy': float(self.model_accuracy) if self.model_accuracy else None,
+            'feature_version': self.feature_version
         }
     
     def __repr__(self):
@@ -102,3 +109,38 @@ class FeatureCache(db.Model):
     
     def __repr__(self):
         return f"<FeatureCache {self.cache_id} for {self.enrollment_id} on {self.feature_date}>"
+    
+class MLFeatureStaging(db.Model):
+    """ML Feature staging table for batch processing"""
+    __tablename__ = 'ml_feature_staging'
+    
+    staging_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    enrollment_id = db.Column(db.Integer, db.ForeignKey('enrollments.enrollment_id'), nullable=False)
+    calculation_date = db.Column(db.Date, nullable=False)
+    feature_data = db.Column(db.JSON, nullable=False)
+    is_processed = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    def __init__(self, enrollment_id, calculation_date, feature_data):
+        self.enrollment_id = enrollment_id
+        self.calculation_date = calculation_date
+        self.feature_data = feature_data
+    
+    def mark_processed(self):
+        """Mark this staging record as processed"""
+        self.is_processed = True
+        db.session.commit()
+    
+    def to_dict(self):
+        """Convert to dictionary for API responses"""
+        return {
+            'staging_id': self.staging_id,
+            'enrollment_id': self.enrollment_id,
+            'calculation_date': self.calculation_date.isoformat() if self.calculation_date else None,
+            'feature_data': self.feature_data,
+            'is_processed': self.is_processed,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+    
+    def __repr__(self):
+        return f"<MLFeatureStaging {self.staging_id} for enrollment {self.enrollment_id}>"

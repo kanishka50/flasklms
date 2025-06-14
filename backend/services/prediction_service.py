@@ -1,236 +1,370 @@
-# backend/services/prediction_service.py
-import pickle
-import numpy as np
-import pandas as pd
-import json
-import logging
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
-from ..extensions import db
-from ..models import Prediction, Enrollment
-from .feature_calculator_service import WebAppFeatureCalculator
+from typing import List, Dict, Optional, Tuple
+from sqlalchemy import and_
+from backend.extensions import db
+from backend.models import (
+    Prediction, FeatureCache, Enrollment, Student, 
+    CourseOffering, Alert, AlertType, ModelVersion
+)
+from backend.services.feature_calculator_service import FeatureCalculator
+from backend.services.model_service import ModelService
+import logging
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
-class MLPredictionService:
-    """
-    Service for making predictions using your trained XGBoost model
-    """
+class PredictionService:
+    """Service for managing grade predictions"""
     
     def __init__(self):
-        self.model = None
-        self.scaler = None
-        self.feature_calculator = WebAppFeatureCalculator()
-        self.model_metadata = None
-        self._load_model()
+        self.feature_calculator = FeatureCalculator()
+        self.model_service = ModelService()
     
-    def _load_model(self):
-        """Load the trained model and scaler"""
-        try:
-            # Load model
-            with open('ml_models/grade_predictor.pkl', 'rb') as f:
-                self.model = pickle.load(f)
-            
-            # Load scaler
-            with open('ml_models/scaler.pkl', 'rb') as f:
-                self.scaler = pickle.load(f)
-            
-            # Load metadata
-            with open('ml_models/model_metadata.json', 'r') as f:
-                self.model_metadata = json.load(f)
-            
-            logger.info(f"Successfully loaded model: {self.model_metadata.get('model_name', 'Unknown')}")
-            logger.info(f"Model expects {self.model_metadata.get('feature_count', 0)} features")
-            
-        except Exception as e:
-            logger.error(f"Failed to load model: {str(e)}")
-            raise
-    
-    def predict_student_grade(
-        self, 
-        enrollment_id: int, 
-        calculation_date: Optional[datetime] = None
-    ) -> Dict[str, any]:
+    def generate_prediction(self, enrollment_id: int, 
+                          save: bool = True) -> Dict:
         """
-        Predict grade for a single student
+        Generate a prediction for a single student enrollment
+        
+        Args:
+            enrollment_id: The enrollment to predict for
+            save: Whether to save the prediction to database
+            
+        Returns:
+            Dictionary with prediction details
         """
         try:
-            logger.info(f"Starting prediction for enrollment {enrollment_id}")
+            logger.info(f"Generating prediction for enrollment {enrollment_id}")
             
             # Calculate features
-            features = self.feature_calculator.calculate_features_for_student(
-                enrollment_id, 
-                calculation_date
+            features = self.feature_calculator.calculate_features_for_enrollment(
+                enrollment_id
             )
-            
-            if not features:
-                raise ValueError("Failed to calculate features")
-            
-            logger.info(f"Features calculated: {len(features)} features")
-            
-            # Convert to numpy array in correct order
-            feature_vector = np.array([
-                features[feature] for feature in self.model_metadata['feature_order']
-            ]).reshape(1, -1)
-            
-            logger.info(f"Feature vector shape: {feature_vector.shape}")
-            
-            # Scale features
-            scaled_features = self.scaler.transform(feature_vector)
-            logger.info("Features scaled successfully")
             
             # Make prediction
-            prediction_proba = self.model.predict_proba(scaled_features)[0]
-            predicted_class = self.model.predict(scaled_features)[0]
+            predicted_grade, confidence, risk_level = self.model_service.predict(features)
             
-            logger.info(f"Raw prediction: class={predicted_class}, probabilities={prediction_proba}")
+            # Get model info
+            model_info = self.model_service.get_model_info()
             
-            # Map prediction to grade
-            grade_mapping = {0: 'Fail', 1: 'Pass', 2: 'Distinction', 3: 'Withdrawn'}
-            predicted_grade = grade_mapping.get(predicted_class, 'Unknown')
-            
-            # Calculate confidence (max probability)
-            confidence = float(np.max(prediction_proba))
-            
-            # Determine risk level
-            risk_level = self._calculate_risk_level(predicted_grade, confidence)
-            
-            # Store prediction in database
-            prediction_record = self._save_prediction(
-                enrollment_id=enrollment_id,
-                predicted_grade=predicted_grade,
-                confidence=confidence,
-                risk_level=risk_level,
-                features=features
-            )
-            
-            result = {
-                'prediction_id': prediction_record.prediction_id,
+            # Create prediction record
+            prediction_data = {
                 'enrollment_id': enrollment_id,
+                'prediction_date': datetime.now(),
                 'predicted_grade': predicted_grade,
                 'confidence_score': confidence,
                 'risk_level': risk_level,
-                'prediction_date': prediction_record.prediction_date.isoformat(),
-                'model_version': self.model_metadata.get('model_name', 'v1.0'),
-                'features_used': features,
-                'class_probabilities': {
-                    'Fail': float(prediction_proba[0]) if len(prediction_proba) > 0 else 0,
-                    'Pass': float(prediction_proba[1]) if len(prediction_proba) > 1 else 0,
-                    'Distinction': float(prediction_proba[2]) if len(prediction_proba) > 2 else 0,
-                    'Withdrawn': float(prediction_proba[3]) if len(prediction_proba) > 3 else 0
-                }
+                'model_version': model_info['version'],
+                'feature_snapshot': self._create_feature_snapshot(features)
             }
             
-            logger.info(f"Prediction completed: {predicted_grade} (confidence: {confidence:.2f})")
-            return result
+            if save:
+                # Save to database
+                prediction = Prediction(**prediction_data)
+                
+                # Add model accuracy if available
+                model_version = ModelVersion.query.filter_by(is_active=True).first()
+                if model_version and model_version.accuracy:
+                    prediction.model_accuracy = model_version.accuracy
+                
+                db.session.add(prediction)
+                
+                # Check if alert needed
+                if risk_level in ['medium', 'high']:
+                    self._create_alert(enrollment_id, risk_level, predicted_grade)
+                
+                # Cache features for performance
+                self._cache_features(enrollment_id, features)
+                
+                db.session.commit()
+                prediction_data['prediction_id'] = prediction.prediction_id
+            
+            # Add explanation
+            explanation = self.model_service.explain_prediction(
+                features, predicted_grade, confidence
+            )
+            prediction_data['explanation'] = explanation
+            
+            logger.info(f"Prediction generated successfully: {predicted_grade} ({confidence:.2f})")
+            return prediction_data
             
         except Exception as e:
-            logger.error(f"Error predicting for enrollment {enrollment_id}: {str(e)}")
+            logger.error(f"Error generating prediction: {str(e)}")
+            db.session.rollback()
             raise
     
-    def predict_batch(
-        self, 
-        enrollment_ids: List[int], 
-        calculation_date: Optional[datetime] = None
-    ) -> List[Dict[str, any]]:
+    def batch_generate_predictions(self, offering_id: int) -> List[Dict]:
         """
-        Predict grades for multiple students
-        """
-        results = []
+        Generate predictions for all students in a course offering
         
-        for enrollment_id in enrollment_ids:
-            try:
-                prediction = self.predict_student_grade(enrollment_id, calculation_date)
-                results.append(prediction)
-            except Exception as e:
-                logger.error(f"Failed to predict for enrollment {enrollment_id}: {str(e)}")
-                # Add error record
-                results.append({
-                    'enrollment_id': enrollment_id,
-                    'error': str(e),
-                    'predicted_grade': None,
-                    'confidence_score': 0.0,
-                    'risk_level': 'unknown'
-                })
+        Args:
+            offering_id: The course offering ID
+            
+        Returns:
+            List of prediction results
+        """
+        try:
+            # Get all active enrollments for the offering
+            enrollments = Enrollment.query.filter(
+                and_(
+                    Enrollment.offering_id == offering_id,
+                    Enrollment.enrollment_status == 'enrolled'
+                )
+            ).all()
+            
+            results = []
+            success_count = 0
+            
+            for enrollment in enrollments:
+                try:
+                    result = self.generate_prediction(enrollment.enrollment_id)
+                    results.append({
+                        'enrollment_id': enrollment.enrollment_id,
+                        'student_id': enrollment.student_id,
+                        'status': 'success',
+                        'prediction': result
+                    })
+                    success_count += 1
+                except Exception as e:
+                    logger.error(f"Failed to predict for enrollment {enrollment.enrollment_id}: {str(e)}")
+                    results.append({
+                        'enrollment_id': enrollment.enrollment_id,
+                        'student_id': enrollment.student_id,
+                        'status': 'error',
+                        'error': str(e)
+                    })
+            
+            logger.info(f"Batch prediction complete: {success_count}/{len(enrollments)} successful")
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error in batch prediction: {str(e)}")
+            raise
+    
+    def get_prediction_history(self, enrollment_id: int, 
+                             limit: int = 10) -> List[Dict]:
+        """
+        Get prediction history for an enrollment
+        
+        Args:
+            enrollment_id: The enrollment ID
+            limit: Maximum number of predictions to return
+            
+        Returns:
+            List of predictions ordered by date (newest first)
+        """
+        predictions = Prediction.query.filter_by(
+            enrollment_id=enrollment_id
+        ).order_by(
+            Prediction.prediction_date.desc()
+        ).limit(limit).all()
+        
+        return [p.to_dict() for p in predictions]
+    
+    def get_latest_prediction(self, enrollment_id: int) -> Optional[Dict]:
+        """Get the most recent prediction for an enrollment"""
+        prediction = Prediction.query.filter_by(
+            enrollment_id=enrollment_id
+        ).order_by(
+            Prediction.prediction_date.desc()
+        ).first()
+        
+        if prediction:
+            return prediction.to_dict()
+        return None
+    
+    def get_at_risk_students(self, offering_id: Optional[int] = None,
+                           risk_levels: List[str] = ['high', 'medium']) -> List[Dict]:
+        """
+        Get students at risk across courses
+        
+        Args:
+            offering_id: Optional course offering filter
+            risk_levels: Risk levels to include
+            
+        Returns:
+            List of at-risk students with their latest predictions
+        """
+        query = db.session.query(
+            Prediction, Enrollment, Student
+        ).join(
+            Enrollment, Prediction.enrollment_id == Enrollment.enrollment_id
+        ).join(
+            Student, Enrollment.student_id == Student.student_id
+        ).filter(
+            Prediction.risk_level.in_(risk_levels)
+        )
+        
+        if offering_id:
+            query = query.filter(Enrollment.offering_id == offering_id)
+        
+        # Get only the latest prediction for each enrollment
+        subquery = db.session.query(
+            Prediction.enrollment_id,
+            db.func.max(Prediction.prediction_date).label('max_date')
+        ).group_by(Prediction.enrollment_id).subquery()
+        
+        query = query.join(
+            subquery,
+            and_(
+                Prediction.enrollment_id == subquery.c.enrollment_id,
+                Prediction.prediction_date == subquery.c.max_date
+            )
+        )
+        
+        results = []
+        for prediction, enrollment, student in query.all():
+            results.append({
+                'student_id': student.student_id,
+                'student_name': f"{student.first_name} {student.last_name}",
+                'enrollment_id': enrollment.enrollment_id,
+                'prediction': prediction.to_dict(),
+                'course_info': self._get_course_info(enrollment.offering_id)
+            })
         
         return results
     
-    def _calculate_risk_level(self, predicted_grade: str, confidence: float) -> str:
+    def compare_predictions(self, enrollment_id: int, 
+                          date1: datetime, date2: datetime) -> Dict:
         """
-        Calculate risk level based on prediction and confidence
+        Compare predictions between two dates
+        
+        Args:
+            enrollment_id: The enrollment ID
+            date1: First date
+            date2: Second date
+            
+        Returns:
+            Comparison details
         """
-        if predicted_grade in ['Fail', 'Withdrawn']:
-            return 'high'
-        elif predicted_grade == 'Pass' and confidence < 0.7:
-            return 'medium'
-        elif predicted_grade == 'Pass' and confidence >= 0.7:
-            return 'low'
-        elif predicted_grade == 'Distinction':
-            return 'low'
-        else:
-            return 'medium'
-    
-    def _save_prediction(
-        self,
-        enrollment_id: int,
-        predicted_grade: str,
-        confidence: float,
-        risk_level: str,
-        features: Dict[str, float]
-    ) -> Prediction:
-        """
-        Save prediction to database
-        """
-        try:
-            # Create prediction record
-            prediction = Prediction(
-                enrollment_id=enrollment_id,
-                prediction_date=datetime.now(),
-                predicted_grade=predicted_grade,
-                confidence_score=confidence,
-                risk_level=risk_level,
-                model_version=self.model_metadata.get('model_name', 'v1.0'),
-                feature_snapshot=features
+        # Get predictions closest to each date
+        pred1 = Prediction.query.filter(
+            and_(
+                Prediction.enrollment_id == enrollment_id,
+                Prediction.prediction_date <= date1
             )
-            
-            db.session.add(prediction)
-            db.session.commit()
-            
-            logger.info(f"Prediction saved with ID: {prediction.prediction_id}")
-            return prediction
-            
-        except Exception as e:
-            db.session.rollback()
-            logger.error(f"Failed to save prediction: {str(e)}")
-            raise
-    
-    def get_model_info(self) -> Dict[str, any]:
-        """
-        Get information about the loaded model
-        """
-        return {
-            'model_name': self.model_metadata.get('model_name', 'Unknown'),
-            'model_type': self.model_metadata.get('model_type', 'Unknown'),
-            'feature_count': self.model_metadata.get('feature_count', 0),
-            'export_date': self.model_metadata.get('export_date', 'Unknown'),
-            'training_complete': self.model_metadata.get('training_complete', False),
-            'features': self.model_metadata.get('feature_order', [])
-        }
-    
-    def validate_features(self, features: Dict[str, float]) -> Dict[str, any]:
-        """
-        Validate that features are complete and in correct format
-        """
-        expected_features = set(self.model_metadata['feature_order'])
-        provided_features = set(features.keys())
+        ).order_by(Prediction.prediction_date.desc()).first()
         
-        missing_features = expected_features - provided_features
-        extra_features = provided_features - expected_features
+        pred2 = Prediction.query.filter(
+            and_(
+                Prediction.enrollment_id == enrollment_id,
+                Prediction.prediction_date <= date2
+            )
+        ).order_by(Prediction.prediction_date.desc()).first()
+        
+        if not pred1 or not pred2:
+            return {'error': 'Predictions not found for specified dates'}
         
         return {
-            'is_valid': len(missing_features) == 0,
-            'expected_count': len(expected_features),
-            'provided_count': len(provided_features),
-            'missing_features': list(missing_features),
-            'extra_features': list(extra_features)
+            'earlier_prediction': pred1.to_dict(),
+            'later_prediction': pred2.to_dict(),
+            'grade_changed': pred1.predicted_grade != pred2.predicted_grade,
+            'confidence_change': float(pred2.confidence_score - pred1.confidence_score),
+            'risk_change': self._compare_risk_levels(pred1.risk_level, pred2.risk_level)
         }
+    
+    def _create_feature_snapshot(self, features: np.ndarray) -> Dict:
+        """Create a snapshot of features for storage"""
+        feature_names = self.feature_calculator.get_feature_names()
+        feature_values = features.flatten().tolist()
+        
+        return {
+            name: float(value) 
+            for name, value in zip(feature_names, feature_values)
+        }
+    
+    def _create_alert(self, enrollment_id: int, risk_level: str, 
+                     predicted_grade: str):
+        """Create an alert for at-risk students"""
+        # Get or create alert type
+        alert_type = AlertType.query.filter_by(
+            type_name='at_risk_prediction'
+        ).first()
+        
+        if not alert_type:
+            alert_type = AlertType(
+                type_name='at_risk_prediction',
+                severity='warning' if risk_level == 'medium' else 'critical',
+                description='Student identified as at-risk by prediction model'
+            )
+            db.session.add(alert_type)
+            db.session.flush()
+        
+        # Create alert
+        alert = Alert(
+            enrollment_id=enrollment_id,
+            type_id=alert_type.type_id,
+            triggered_date=datetime.now(),
+            alert_message=f"Student predicted to {predicted_grade} with {risk_level} risk level",
+            severity=alert_type.severity
+        )
+        db.session.add(alert)
+    
+    def _cache_features(self, enrollment_id: int, features: np.ndarray):
+        """Cache calculated features for performance"""
+        feature_names = self.feature_calculator.get_feature_names()
+        feature_values = features.flatten()
+        
+        # Create feature cache entry
+        cache_data = {
+            'enrollment_id': enrollment_id,
+            'feature_date': datetime.now().date()
+        }
+        
+        # Map specific features to cache columns
+        feature_mapping = {
+            'attendance_rate': 'attendance_rate',
+            'avg_session_duration': 'avg_session_duration',
+            'login_frequency': 'login_frequency',
+            'resource_access_rate': 'resource_access_rate',
+            'assessment_submission_rate': 'assignment_submission_rate',
+            'avg_assessment_score': 'avg_assignment_score',
+            'forum_engagement_score': 'forum_engagement_score',
+            'study_consistency': 'study_consistency_score',
+            'days_since_last_login': 'last_login_days_ago',
+            'total_online_minutes': 'total_study_minutes'
+        }
+        
+        for feature_name, cache_column in feature_mapping.items():
+            if feature_name in feature_names:
+                idx = feature_names.index(feature_name)
+                cache_data[cache_column] = feature_values[idx]
+        
+        # Check if cache exists for today
+        existing_cache = FeatureCache.query.filter_by(
+            enrollment_id=enrollment_id,
+            feature_date=cache_data['feature_date']
+        ).first()
+        
+        if existing_cache:
+            # Update existing cache
+            for key, value in cache_data.items():
+                setattr(existing_cache, key, value)
+        else:
+            # Create new cache entry
+            cache = FeatureCache(**cache_data)
+            db.session.add(cache)
+    
+    def _get_course_info(self, offering_id: int) -> Dict:
+        """Get course information for an offering"""
+        offering = CourseOffering.query.get(offering_id)
+        if offering:
+            return {
+                'course_code': offering.course.course_code,
+                'course_name': offering.course.course_name,
+                'section': offering.section_number
+            }
+        return {}
+    
+    def _compare_risk_levels(self, level1: str, level2: str) -> str:
+        """Compare two risk levels and return the change"""
+        risk_order = {'low': 0, 'medium': 1, 'high': 2}
+        
+        val1 = risk_order.get(level1, 0)
+        val2 = risk_order.get(level2, 0)
+        
+        if val2 > val1:
+            return 'increased'
+        elif val2 < val1:
+            return 'decreased'
+        else:
+            return 'unchanged'

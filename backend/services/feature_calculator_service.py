@@ -1,428 +1,332 @@
-# backend/services/feature_calculator_service.py
-import pandas as pd
-import numpy as np
 import json
-import logging
-from typing import Dict, List, Optional
+import numpy as np
 from datetime import datetime, timedelta
-from sqlalchemy import text
-from ..extensions import db
+from typing import Dict, List, Optional, Tuple
+from sqlalchemy import func
+from backend.extensions import db
+from backend.models import (
+    Enrollment, Attendance, LMSSession, LMSActivity, 
+    AssessmentSubmission, Assessment, LMSDailySummary, Student
+)
+from backend.utils.helpers import safe_float, safe_int
+import logging
 
 logger = logging.getLogger(__name__)
 
-class WebAppFeatureCalculator:
-    """
-    Calculate all 26 features required by the ML model
-    """
+class FeatureCalculator:
+    """Calculate features matching OULAD format for ML model prediction"""
     
     def __init__(self):
-        # Load feature order from your trained model
-        try:
-            with open('ml_models/feature_list.json', 'r') as f:
-                self.feature_order = json.load(f)
-            logger.info(f"Loaded {len(self.feature_order)} features from model")
-        except FileNotFoundError:
-            logger.error("feature_list.json not found")
-            self.feature_order = []
+        # Load feature list from model metadata
+        with open('ml_models/feature_list.json', 'r') as f:
+            self.feature_list = json.load(f)
+        
+        logger.info(f"Feature calculator initialized with {len(self.feature_list)} features")
     
-    def calculate_features_for_student(
-        self, 
-        enrollment_id: int, 
-        calculation_date: Optional[datetime] = None
-    ) -> Dict[str, float]:
+    def calculate_features_for_enrollment(self, enrollment_id: int, 
+                                        as_of_date: Optional[datetime] = None) -> Dict:
         """
-        Calculate all 26 features for a single student enrollment
+        Calculate all features for a single enrollment in OULAD format
         """
-        if calculation_date is None:
-            calculation_date = datetime.now()
+        if as_of_date is None:
+            as_of_date = datetime.now()
         
-        logger.info(f"Calculating features for enrollment {enrollment_id}")
+        # Get enrollment details
+        enrollment = Enrollment.query.get(enrollment_id)
+        if not enrollment:
+            raise ValueError(f"Enrollment {enrollment_id} not found")
         
-        try:
-            # Check if enrollment exists
-            enrollment_check = db.engine.execute(
-                text("SELECT student_id FROM enrollments WHERE enrollment_id = :id"),
-                id=enrollment_id
-            ).fetchone()
-            
-            if not enrollment_check:
-                raise ValueError(f"Enrollment {enrollment_id} not found")
-            
-            # Calculate each feature group
-            features = {}
-            
-            # Activity features (from attendance and LMS data)
-            activity_features = self._calculate_activity_features(enrollment_id, calculation_date)
-            features.update(activity_features)
-            
-            # Assessment features
-            assessment_features = self._calculate_assessment_features(enrollment_id, calculation_date)
-            features.update(assessment_features)
-            
-            # Temporal features
-            temporal_features = self._calculate_temporal_features(enrollment_id, calculation_date)
-            features.update(temporal_features)
-            
-            # Demographic features
-            student_id = enrollment_check[0]
-            demographic_features = self._calculate_demographic_features(student_id)
-            features.update(demographic_features)
-            
-            # Ensure all 26 features are present
-            ordered_features = {}
-            for feature in self.feature_order:
-                ordered_features[feature] = features.get(feature, 0.0)
-            
-            logger.info(f"Successfully calculated {len(ordered_features)} features")
-            return ordered_features
-            
-        except Exception as e:
-            logger.error(f"Error calculating features for enrollment {enrollment_id}: {str(e)}")
-            return self._get_default_features()
-    
-    def _calculate_activity_features(self, enrollment_id: int, calc_date: datetime) -> Dict[str, float]:
-        """Calculate activity-based features from attendance and LMS data"""
+        # Convert production data to OULAD-style VLE data
+        vle_data = self._convert_to_vle_format(enrollment_id, as_of_date)
         
-        # Get attendance data
-        attendance_query = text("""
-            SELECT attendance_date, status 
-            FROM attendance 
-            WHERE enrollment_id = :enrollment_id 
-            AND attendance_date <= :calc_date
-            ORDER BY attendance_date
-        """)
-        
-        try:
-            attendance_result = db.engine.execute(
-                attendance_query, 
-                enrollment_id=enrollment_id, 
-                calc_date=calc_date.date()
-            )
-            attendance_data = [dict(row) for row in attendance_result]
-        except:
-            attendance_data = []
-        
-        # Get LMS activity data
-        lms_query = text("""
-            SELECT 
-                DATE(activity_timestamp) as activity_date,
-                activity_type,
-                resource_id,
-                COUNT(*) as click_count
-            FROM lms_activities 
-            WHERE enrollment_id = :enrollment_id 
-            AND activity_timestamp <= :calc_date
-            GROUP BY DATE(activity_timestamp), activity_type, resource_id
-            ORDER BY activity_date
-        """)
-        
-        try:
-            lms_result = db.engine.execute(
-                lms_query, 
-                enrollment_id=enrollment_id, 
-                calc_date=calc_date
-            )
-            lms_data = [dict(row) for row in lms_result]
-        except:
-            lms_data = []
-        
-        # Calculate features
+        # Initialize features dictionary
         features = {}
         
-        # Days active (from both attendance and LMS)
-        active_dates = set()
+        # Calculate activity features
+        features.update(self._calculate_activity_features(vle_data))
         
-        # Add attendance dates where student was present/late
-        for record in attendance_data:
-            if record['status'] in ['present', 'late']:
-                active_dates.add(record['attendance_date'])
+        # Calculate assessment features
+        features.update(self._calculate_assessment_features(enrollment_id, as_of_date))
         
-        # Add LMS activity dates
-        for record in lms_data:
-            active_dates.add(record['activity_date'])
+        # Calculate demographic features
+        features.update(self._calculate_demographic_features(enrollment))
         
-        features['days_active'] = len(active_dates)
+        # Ensure all required features are present
+        return self._validate_and_order_features(features)
+    
+    def _convert_to_vle_format(self, enrollment_id: int, as_of_date: datetime) -> List[Dict]:
+        """Convert production data to OULAD VLE format"""
+        vle_records = []
         
-        # Total clicks (weighted by attendance and LMS activity)
-        total_clicks = 0
+        # Convert attendance to VLE format
+        attendance_records = Attendance.query.filter(
+            Attendance.enrollment_id == enrollment_id,
+            Attendance.attendance_date <= as_of_date
+        ).all()
         
-        # Add attendance clicks (using mapping rules)
-        present_count = sum(1 for r in attendance_data if r['status'] == 'present')
-        late_count = sum(1 for r in attendance_data if r['status'] == 'late')
-        total_clicks += (present_count * 30) + (late_count * 15)
+        for attendance in attendance_records:
+            if attendance.status == 'present':
+                vle_records.append({
+                    'date': (attendance.attendance_date - self._get_course_start_date(enrollment_id)).days,
+                    'id_site': f'attendance_{attendance.attendance_id}',
+                    'sum_click': 30
+                })
+            elif attendance.status == 'late':
+                vle_records.append({
+                    'date': (attendance.attendance_date - self._get_course_start_date(enrollment_id)).days,
+                    'id_site': f'attendance_{attendance.attendance_id}',
+                    'sum_click': 15
+                })
         
-        # Add LMS clicks (weighted by activity type)
-        click_weights = {
-            'resource_view': 1, 'forum_post': 5, 'forum_reply': 3,
-            'assignment_view': 2, 'quiz_attempt': 10, 'video_watch': 1,
-            'file_download': 2, 'page_view': 1
+        # Convert LMS activities to VLE format
+        click_mapping = {
+            'resource_view': 1,
+            'forum_post': 5,
+            'forum_reply': 3,
+            'assignment_view': 2,
+            'quiz_attempt': 10,
+            'video_watch': 1,
+            'file_download': 2,
+            'page_view': 1
         }
         
-        for record in lms_data:
-            weight = click_weights.get(record['activity_type'], 1)
-            total_clicks += record['click_count'] * weight
+        activities = LMSActivity.query.join(LMSSession).filter(
+            LMSSession.enrollment_id == enrollment_id,
+            LMSActivity.activity_timestamp <= as_of_date
+        ).all()
         
-        features['total_clicks'] = total_clicks
+        for activity in activities:
+            vle_records.append({
+                'date': (activity.activity_timestamp.date() - self._get_course_start_date(enrollment_id)).days,
+                'id_site': activity.resource_id or f'activity_{activity.activity_id}',
+                'sum_click': click_mapping.get(activity.activity_type, 1)
+            })
         
-        # Unique materials (unique resources + attendance sessions)
-        unique_materials = set()
-        
-        # Add LMS resources
-        for record in lms_data:
-            if record['resource_id']:
-                unique_materials.add(record['resource_id'])
-        
-        # Add attendance as unique "materials"
-        for record in attendance_data:
-            if record['status'] in ['present', 'late']:
-                unique_materials.add(f"attendance_{record['attendance_date']}")
-        
-        features['unique_materials'] = len(unique_materials)
-        
-        # Activity rate (percentage of course days active)
-        course_length = 112  # 16-week semester = 112 days
-        features['activity_rate'] = (features['days_active'] / course_length) * 100 if course_length > 0 else 0
-        
-        # Average clicks per active day
-        features['avg_clicks_per_active_day'] = (
-            total_clicks / features['days_active'] if features['days_active'] > 0 else 0
-        )
-        
-        # First and last activity days (relative to course start)
-        if active_dates:
-            # Get enrollment date
-            enrollment_query = text("SELECT enrollment_date FROM enrollments WHERE enrollment_id = :id")
-            enrollment_result = db.engine.execute(enrollment_query, id=enrollment_id).fetchone()
-            
-            if enrollment_result:
-                course_start = enrollment_result[0]
-                min_date = min(active_dates)
-                max_date = max(active_dates)
-                
-                features['first_activity_day'] = (min_date - course_start).days
-                features['last_activity_day'] = (max_date - course_start).days
-            else:
-                features['first_activity_day'] = 0
-                features['last_activity_day'] = 0
-        else:
-            features['first_activity_day'] = 0
-            features['last_activity_day'] = 0
-        
-        return features
+        return vle_records
     
-    def _calculate_assessment_features(self, enrollment_id: int, calc_date: datetime) -> Dict[str, float]:
-        """Calculate assessment-based features"""
-        
-        # Get assessment submissions
-        submission_query = text("""
-            SELECT 
-                asub.score,
-                asub.submission_date,
-                asub.is_late,
-                COALESCE(a.assessment_type_mapped, 'Assignment') as assessment_type,
-                a.due_date
-            FROM assessment_submissions asub
-            JOIN assessments a ON asub.assessment_id = a.assessment_id
-            WHERE asub.enrollment_id = :enrollment_id 
-            AND asub.submission_date <= :calc_date
-        """)
-        
-        try:
-            submission_result = db.engine.execute(
-                submission_query, 
-                enrollment_id=enrollment_id, 
-                calc_date=calc_date
-            )
-            submissions = [dict(row) for row in submission_result]
-        except:
-            submissions = []
-        
+    def _get_course_start_date(self, enrollment_id: int):
+        """Get course start date for relative date calculations"""
+        enrollment = Enrollment.query.get(enrollment_id)
+        if enrollment and enrollment.offering and enrollment.offering.term:
+            return enrollment.offering.term.start_date
+        # Default to enrollment date if no term start date
+        return enrollment.enrollment_date if enrollment else datetime.now().date()
+    
+    def _calculate_activity_features(self, vle_data: List[Dict]) -> Dict:
+        """Calculate activity-based features from VLE data"""
         features = {}
         
-        if not submissions:
-            # Return zero values for all assessment features
+        if not vle_data:
+            # Return zero values for all activity features
             return {
-                'submitted_assessments': 0, 'submission_rate': 0, 'avg_score': 0,
-                'avg_score_cma': 0, 'avg_score_tma': 0, 'avg_score_exam': 0,
-                'on_time_submissions': 0, 'avg_days_early': 0, 'late_submission_count': 0
-            }
-        
-        # Basic submission metrics
-        features['submitted_assessments'] = len(submissions)
-        
-        # Get total assessments for this enrollment
-        total_assessments_query = text("""
-            SELECT COUNT(*) as total
-            FROM assessments a
-            JOIN course_offerings co ON a.offering_id = co.offering_id
-            JOIN enrollments e ON e.offering_id = co.offering_id
-            WHERE e.enrollment_id = :enrollment_id
-            AND a.due_date <= :calc_date
-        """)
-        
-        try:
-            result = db.engine.execute(
-                total_assessments_query, 
-                enrollment_id=enrollment_id, 
-                calc_date=calc_date
-            ).fetchone()
-            total_assessments = result[0] if result else 1
-        except:
-            total_assessments = 1
-        
-        features['submission_rate'] = (features['submitted_assessments'] / total_assessments) * 100
-        
-        # Average scores
-        scores = [s['score'] for s in submissions if s['score'] is not None]
-        features['avg_score'] = sum(scores) / len(scores) if scores else 0
-        
-        # Scores by assessment type
-        for assess_type in ['CMA', 'TMA', 'Exam']:
-            type_scores = [s['score'] for s in submissions 
-                          if s['assessment_type'] == assess_type and s['score'] is not None]
-            features[f'avg_score_{assess_type.lower()}'] = (
-                sum(type_scores) / len(type_scores) if type_scores else 0
-            )
-        
-        # Submission timing
-        on_time = sum(1 for s in submissions if not s['is_late'])
-        late = sum(1 for s in submissions if s['is_late'])
-        
-        features['on_time_submissions'] = on_time
-        features['late_submission_count'] = late
-        
-        # Calculate average days early (simplified)
-        features['avg_days_early'] = 0  # Would need more complex date calculation
-        
-        return features
-    
-    def _calculate_temporal_features(self, enrollment_id: int, calc_date: datetime) -> Dict[str, float]:
-        """Calculate temporal pattern features"""
-        
-        # Get all activity dates (attendance + LMS)
-        activity_query = text("""
-            SELECT DISTINCT DATE(activity_timestamp) as activity_date
-            FROM lms_activities 
-            WHERE enrollment_id = :enrollment_id 
-            AND activity_timestamp <= :calc_date
-            
-            UNION
-            
-            SELECT DISTINCT attendance_date as activity_date
-            FROM attendance 
-            WHERE enrollment_id = :enrollment_id 
-            AND status IN ('present', 'late')
-            AND attendance_date <= :calc_date
-            
-            ORDER BY activity_date
-        """)
-        
-        try:
-            activity_result = db.engine.execute(
-                activity_query, 
-                enrollment_id=enrollment_id, 
-                calc_date=calc_date
-            )
-            activity_dates = [row[0] for row in activity_result]
-        except:
-            activity_dates = []
-        
-        features = {}
-        
-        if not activity_dates:
-            return {
-                'weekly_activity_std': 0, 'activity_regularity': 0,
-                'longest_inactivity_gap': 0, 'weekend_activity_ratio': 0,
+                'days_active': 0,
+                'total_clicks': 0,
+                'unique_materials': 0,
+                'activity_rate': 0,
+                'avg_clicks_per_active_day': 0,
+                'first_activity_day': -1,
+                'last_activity_day': -1,
+                'weekly_activity_std': 0,
+                'activity_regularity': 0,
+                'longest_inactivity_gap': 0,
+                'weekend_activity_ratio': 0,
                 'activity_trend': 0
             }
         
-        # Convert to pandas for easier calculation
-        df = pd.DataFrame({'activity_date': pd.to_datetime(activity_dates)})
-        df['week'] = df['activity_date'].dt.isocalendar().week
+        # Basic activity metrics
+        unique_days = set(record['date'] for record in vle_data)
+        features['days_active'] = len(unique_days)
+        features['total_clicks'] = sum(record['sum_click'] for record in vle_data)
+        features['unique_materials'] = len(set(record['id_site'] for record in vle_data))
         
-        # Weekly activity count
-        weekly_counts = df.groupby('week').size()
-        features['weekly_activity_std'] = weekly_counts.std() if len(weekly_counts) > 1 else 0
+        # Activity rate (percentage of course days active)
+        course_days = max(unique_days) - min(unique_days) + 1 if unique_days else 1
+        features['activity_rate'] = (features['days_active'] / max(course_days, 1)) * 100
         
-        # Activity regularity
-        if weekly_counts.mean() > 0 and len(weekly_counts) > 1:
-            cv = weekly_counts.std() / weekly_counts.mean()
-            features['activity_regularity'] = 1 / (1 + cv)
+        # Average clicks per active day
+        features['avg_clicks_per_active_day'] = (
+            features['total_clicks'] / features['days_active'] 
+            if features['days_active'] > 0 else 0
+        )
+        
+        # First and last activity days
+        features['first_activity_day'] = min(unique_days) if unique_days else -1
+        features['last_activity_day'] = max(unique_days) if unique_days else -1
+        
+        # Weekly activity standard deviation
+        weekly_clicks = {}
+        for record in vle_data:
+            week = record['date'] // 7
+            weekly_clicks[week] = weekly_clicks.get(week, 0) + record['sum_click']
+        
+        if len(weekly_clicks) > 1:
+            features['weekly_activity_std'] = np.std(list(weekly_clicks.values()))
+        else:
+            features['weekly_activity_std'] = 0
+        
+        # Activity regularity (inverse of gaps between active days)
+        sorted_days = sorted(unique_days)
+        if len(sorted_days) > 1:
+            gaps = [sorted_days[i+1] - sorted_days[i] for i in range(len(sorted_days)-1)]
+            features['activity_regularity'] = 1 / (np.mean(gaps) + 1) * 100
+            features['longest_inactivity_gap'] = max(gaps)
         else:
             features['activity_regularity'] = 0
-        
-        # Longest inactivity gap
-        if len(activity_dates) > 1:
-            gaps = []
-            for i in range(1, len(activity_dates)):
-                gap = (activity_dates[i] - activity_dates[i-1]).days
-                gaps.append(gap)
-            features['longest_inactivity_gap'] = max(gaps) if gaps else 0
-        else:
             features['longest_inactivity_gap'] = 0
         
         # Weekend activity ratio
-        df['day_of_week'] = df['activity_date'].dt.dayofweek
-        weekend_count = len(df[df['day_of_week'].isin([5, 6])])  # Sat, Sun
-        features['weekend_activity_ratio'] = weekend_count / len(df) if len(df) > 0 else 0
-        
-        # Activity trend (simplified)
-        features['activity_trend'] = 0  # Would need scipy for linear regression
-        
-        return features
-    
-    def _calculate_demographic_features(self, student_id: str) -> Dict[str, float]:
-        """Calculate demographic features from student record"""
-        
-        # Get student demographic data
-        student_query = text("""
-            SELECT age_band, highest_education, num_of_prev_attempts, 
-                   studied_credits, has_disability
-            FROM students 
-            WHERE student_id = :student_id
-        """)
-        
-        try:
-            student_result = db.engine.execute(student_query, student_id=student_id).fetchone()
-        except:
-            student_result = None
-        
-        if not student_result:
-            return self._get_default_demographic_features()
-        
-        features = {}
-        
-        # Age band encoding
-        age_band_map = {'0-35': 0, '35-55': 1, '55+': 2}
-        features['age_band_encoded'] = age_band_map.get(student_result[0] or '0-35', 0)
-        
-        # Education level encoding
-        education_map = {
-            'No Formal quals': 0, 'Lower Than A Level': 1,
-            'A Level or Equivalent': 2, 'HE Qualification': 3,
-            'Post Graduate Qualification': 4
-        }
-        features['highest_education_encoded'] = education_map.get(
-            student_result[1] or 'A Level or Equivalent', 2
+        weekend_days = sum(1 for day in unique_days if (day % 7) in [5, 6])
+        features['weekend_activity_ratio'] = (
+            (weekend_days / features['days_active'] * 100) 
+            if features['days_active'] > 0 else 0
         )
         
-        # Direct features
-        features['num_of_prev_attempts'] = student_result[2] or 0
-        features['studied_credits'] = student_result[3] or 60
-        features['has_disability'] = 1 if student_result[4] else 0
+        # Activity trend (slope of activity over time)
+        if len(unique_days) > 1:
+            x = np.array(sorted(unique_days))
+            y = np.array([sum(r['sum_click'] for r in vle_data if r['date'] == d) for d in x])
+            coefficients = np.polyfit(x, y, 1)
+            features['activity_trend'] = coefficients[0]
+        else:
+            features['activity_trend'] = 0
         
         return features
     
-    def _get_default_demographic_features(self) -> Dict[str, float]:
-        """Default demographic features when student data is missing"""
-        return {
-            'age_band_encoded': 0,
-            'highest_education_encoded': 2,
-            'num_of_prev_attempts': 0,
-            'studied_credits': 60,
-            'has_disability': 0
-        }
+    def _calculate_assessment_features(self, enrollment_id: int, as_of_date: datetime) -> Dict:
+        """Calculate assessment-related features"""
+        features = {}
+        
+        # Get all assessments and submissions
+        enrollment = Enrollment.query.get(enrollment_id)
+        assessments = Assessment.query.filter(
+            Assessment.offering_id == enrollment.offering_id,
+            Assessment.due_date <= as_of_date
+        ).all()
+        
+        submissions = AssessmentSubmission.query.filter(
+            AssessmentSubmission.enrollment_id == enrollment_id,
+            AssessmentSubmission.submission_date <= as_of_date
+        ).all()
+        
+        # Basic submission metrics
+        features['submitted_assessments'] = len(submissions)
+        features['submission_rate'] = (
+            (len(submissions) / len(assessments) * 100) 
+            if assessments else 100
+        )
+        
+        # Score metrics
+        scores = [safe_float(s.score) for s in submissions if s.score is not None]
+        features['avg_score'] = np.mean(scores) if scores else 0
+        
+        # Scores by assessment type
+        cma_scores = []
+        tma_scores = []
+        exam_scores = []
+        
+        for submission in submissions:
+            if submission.assessment and submission.score is not None:
+                score = safe_float(submission.score)
+                assessment_type = submission.assessment.assessment_type_mapped
+                
+                if assessment_type == 'CMA':
+                    cma_scores.append(score)
+                elif assessment_type == 'TMA':
+                    tma_scores.append(score)
+                elif assessment_type == 'Exam':
+                    exam_scores.append(score)
+        
+        features['avg_score_cma'] = np.mean(cma_scores) if cma_scores else 0
+        features['avg_score_tma'] = np.mean(tma_scores) if tma_scores else 0
+        features['avg_score_exam'] = np.mean(exam_scores) if exam_scores else 0
+        
+        # Submission timing features
+        on_time = 0
+        late = 0
+        days_early_list = []
+        
+        for submission in submissions:
+            if submission.is_late:
+                late += 1
+            else:
+                on_time += 1
+                
+            # Calculate days early (negative if late)
+            if submission.assessment and submission.assessment.due_date:
+                days_diff = (submission.assessment.due_date - submission.submission_date).days
+                days_early_list.append(days_diff)
+        
+        features['on_time_submissions'] = on_time
+        features['late_submission_count'] = late
+        features['avg_days_early'] = np.mean(days_early_list) if days_early_list else 0
+        
+        return features
     
-    def _get_default_features(self) -> Dict[str, float]:
-        """Return default feature values when calculation fails"""
-        return {feature: 0.0 for feature in self.feature_order}
+    def _calculate_demographic_features(self, enrollment: Enrollment) -> Dict:
+        """Calculate demographic features based on student info"""
+        features = {}
+        
+        # Get student information
+        student = enrollment.student
+        
+        # Age band encoding (matching OULAD)
+        age_mapping = {
+            '0-35': 0,
+            '35-55': 1,
+            '55+': 2
+        }
+        features['age_band_encoded'] = age_mapping.get(student.age_band, 0)
+        
+        # Education level encoding
+        education_mapping = {
+            'No Formal quals': 0,
+            'Lower Than A Level': 1,
+            'A Level or Equivalent': 2,
+            'HE Qualification': 3,
+            'Post Graduate Qualification': 4
+        }
+        features['highest_education_encoded'] = education_mapping.get(
+            student.highest_education, 2
+        )
+        
+        # Other demographic features
+        features['num_of_prev_attempts'] = safe_int(student.num_of_prev_attempts)
+        features['studied_credits'] = safe_int(student.studied_credits)
+        features['has_disability'] = 1 if student.has_disability else 0
+        
+        return features
+    
+    def _validate_and_order_features(self, features: Dict) -> np.ndarray:
+        """Ensure all features are present and in correct order"""
+        # Check for missing features
+        missing_features = set(self.feature_list) - set(features.keys())
+        if missing_features:
+            logger.warning(f"Missing features: {missing_features}")
+            # Fill missing features with 0
+            for feature in missing_features:
+                features[feature] = 0
+        
+        # Order features according to feature_list
+        ordered_features = []
+        for name in self.feature_list:
+            value = features.get(name, 0)
+            # Ensure numeric type
+            if isinstance(value, (int, float, np.number)):
+                ordered_features.append(float(value))
+            else:
+                ordered_features.append(0.0)
+        
+        return np.array(ordered_features).reshape(1, -1)
+    
+    def get_feature_names(self) -> List[str]:
+        """Get list of feature names in order"""
+        return self.feature_list
+    
+    def get_feature_importance(self) -> Dict:
+        """Get feature importance from model metadata"""
+        try:
+            with open('ml_models/feature_importance.json', 'r') as f:
+                return json.load(f)
+        except FileNotFoundError:
+            logger.warning("Feature importance file not found")
+            return {}
