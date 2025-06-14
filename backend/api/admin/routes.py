@@ -10,12 +10,18 @@ from sqlalchemy import desc, or_, func
 import logging
 from datetime import datetime, timedelta
 from backend.services.alert_service import AlertService
+from backend.services.prediction_analytics_service import PredictionAnalyticsService
+from backend.models import ModelVersion
+from backend.services.reports_service import ReportsService
+
 
 logger = logging.getLogger('admin')
 
 admin_bp = Blueprint('admin', __name__)
 
 alert_service = AlertService()
+prediction_analytics_service = PredictionAnalyticsService()
+reports_service = ReportsService()
 
 # Test endpoint
 @admin_bp.route('/test', methods=['GET'])
@@ -666,99 +672,6 @@ def delete_course(course_id):
         db.session.rollback()
         return error_response("Failed to delete course", 500)
     
-@admin_bp.route('/alerts', methods=['GET'])
-@jwt_required()
-def get_system_alerts():
-    """Get system alerts with pagination and filtering"""
-    try:
-        # Get query parameters
-        page = request.args.get('page', 1, type=int)
-        limit = request.args.get('limit', 10, type=int)
-        severity = request.args.get('severity', None)
-        status = request.args.get('status', None)
-        search = request.args.get('search', None)
-        
-        # Build query with proper joins
-        query = db.session.query(Alert).join(
-            Enrollment, Alert.enrollment_id == Enrollment.enrollment_id
-        ).join(
-            Student, Enrollment.student_id == Student.student_id
-        ).join(
-            User, Student.user_id == User.user_id
-        ).join(
-            CourseOffering, Enrollment.offering_id == CourseOffering.offering_id
-        ).join(
-            Course, CourseOffering.course_id == Course.course_id
-        ).join(
-            AlertType, Alert.type_id == AlertType.type_id
-        )
-        
-        # Apply filters
-        if severity:
-            query = query.filter(Alert.severity == severity)
-        if status:
-            if status == 'active':
-                query = query.filter(Alert.is_resolved == False)
-            elif status == 'resolved':
-                query = query.filter(Alert.is_resolved == True)
-        if search:
-            query = query.filter(
-                or_(
-                    Alert.alert_message.ilike(f'%{search}%'),
-                    AlertType.type_name.ilike(f'%{search}%')
-                )
-            )
-        
-        # Order by triggered date (newest first)
-        query = query.order_by(desc(Alert.triggered_date))
-        
-        # Paginate
-        pagination = query.paginate(page=page, per_page=limit, error_out=False)
-        
-        # Format alerts
-        alerts = []
-        for alert in pagination.items:
-            # Get related data through joins
-            enrollment = alert.enrollment
-            student = enrollment.student
-            user = student.user
-            course_offering = enrollment.offering
-            course = course_offering.course
-            alert_type = alert.alert_type
-            
-            alert_data = {
-                'id': alert.alert_id,
-                'alert_id': alert.alert_id,
-                'alert_type': alert_type.type_name,
-                'type': alert_type.type_name,
-                'message': alert.alert_message,
-                'severity': alert.severity,
-                'status': 'resolved' if alert.is_resolved else 'active',
-                'is_resolved': alert.is_resolved,
-                'is_read': alert.is_read,
-                'triggered_date': alert.triggered_date.isoformat() if alert.triggered_date else None,
-                'created_at': alert.triggered_date.isoformat() if alert.triggered_date else None,
-                'resolved_date': alert.resolved_date.isoformat() if alert.resolved_date else None,
-                'student_id': student.student_id,
-                'student_name': f"{user.first_name or student.first_name} {user.last_name or student.last_name}",
-                'course_id': course.course_id,
-                'course_name': f"{course.course_code} - {course.course_name}"
-            }
-            
-            alerts.append(alert_data)
-        
-        return paginated_response(
-            data=alerts,
-            page=page,
-            per_page=limit,
-            total=pagination.total,
-            message='Alerts retrieved successfully'
-        )
-        
-    except Exception as e:
-        logger.error(f"Error fetching alerts: {str(e)}")
-        # Don't return demo data - return the actual error
-        return error_response(f'Failed to fetch alerts: {str(e)}', 500)
 
 
 @admin_bp.route('/alerts/<int:alert_id>/resolve', methods=['PUT'])
@@ -816,5 +729,466 @@ def paginated_response(data, page, per_page, total, message='Success'):
             'pages': (total + per_page - 1) // per_page if per_page > 0 else 0
         }
     })
+
+@admin_bp.route('/alerts/summary', methods=['GET'])
+@jwt_required()
+def get_alerts_summary():
+    """Get alerts summary statistics"""
+    try:
+        # Get total alerts count
+        total_alerts = Alert.query.count()
+        
+        # Get active alerts (not resolved)
+        active_alerts = Alert.query.filter_by(is_resolved=False).count()
+        
+        # Get critical alerts
+        critical_alerts = Alert.query.filter_by(severity='critical', is_resolved=False).count()
+        
+        # Get resolved today
+        today = datetime.now().date()
+        resolved_today = Alert.query.filter(
+            Alert.is_resolved == True,
+            db.func.date(Alert.resolved_date) == today
+        ).count()
+        
+        return api_response({
+            'total_alerts': total_alerts,
+            'active_alerts': active_alerts,
+            'critical_alerts': critical_alerts,
+            'resolved_today': resolved_today
+        })
+    except Exception as e:
+        return error_response(str(e), 500)
+
+@admin_bp.route('/alerts', methods=['GET'])
+@jwt_required()
+def get_system_alerts():
+    """Get system alerts with pagination and filtering"""
+    try:
+        # Get query parameters
+        page = request.args.get('page', 1, type=int)
+        limit = request.args.get('limit', 10, type=int)
+        severity = request.args.get('severity', None)
+        status = request.args.get('status', None)
+        search = request.args.get('search', None)
+        
+        # Build query with proper joins - return all entities
+        query = db.session.query(Alert, Enrollment, Student, User, CourseOffering, Course, AlertType).join(
+            Enrollment, Alert.enrollment_id == Enrollment.enrollment_id
+        ).join(
+            Student, Enrollment.student_id == Student.student_id
+        ).join(
+            User, Student.user_id == User.user_id
+        ).join(
+            CourseOffering, Enrollment.offering_id == CourseOffering.offering_id
+        ).join(
+            Course, CourseOffering.course_id == Course.course_id
+        ).join(
+            AlertType, Alert.type_id == AlertType.type_id
+        )
+        
+        # Apply filters
+        if severity:
+            query = query.filter(Alert.severity == severity)
+        if status:
+            if status == 'active':
+                query = query.filter(Alert.is_resolved == False)
+            elif status == 'resolved':
+                query = query.filter(Alert.is_resolved == True)
+        if search:
+            query = query.filter(
+                or_(
+                    Alert.alert_message.ilike(f'%{search}%'),
+                    AlertType.type_name.ilike(f'%{search}%')
+                )
+            )
+        
+        # Order by triggered date (newest first)
+        query = query.order_by(desc(Alert.triggered_date))
+        
+        # Paginate
+        pagination = query.paginate(page=page, per_page=limit, error_out=False)
+        
+        # Format alerts
+        alerts = []
+        for alert, enrollment, student, user, course_offering, course, alert_type in pagination.items:
+            alert_data = {
+                'id': alert.alert_id,
+                'alert_id': alert.alert_id,
+                'alert_type': alert_type.type_name,
+                'type': alert_type.type_name,
+                'message': alert.alert_message,
+                'severity': alert.severity,
+                'status': 'resolved' if alert.is_resolved else 'active',
+                'is_resolved': alert.is_resolved,
+                'is_read': alert.is_read,
+                'triggered_date': alert.triggered_date.isoformat() if alert.triggered_date else None,
+                'created_at': alert.triggered_date.isoformat() if alert.triggered_date else None,
+                'resolved_date': alert.resolved_date.isoformat() if alert.resolved_date else None,
+                'student_id': student.student_id,
+                'student_name': f"{student.first_name} {student.last_name}",
+                'course_id': course.course_id,
+                'course_name': f"{course.course_code} - {course.course_name}"
+            }
+            
+            alerts.append(alert_data)
+        
+        return paginated_response(
+            data=alerts,
+            page=page,
+            per_page=limit,
+            total=pagination.total,
+            message='Alerts retrieved successfully'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error fetching alerts: {str(e)}")
+        return error_response(f'Failed to fetch alerts: {str(e)}', 500)
     
+
+
+
+    #admin routes section...
+@admin_bp.route('/predictions/summary', methods=['GET'])
+@jwt_required()
+@admin_required
+def get_predictions_summary():
+    """Get predictions summary statistics"""
+    try:
+        summary = prediction_analytics_service.get_prediction_summary()
+        
+        return api_response(
+            data=summary,
+            message="Predictions summary retrieved successfully"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error getting predictions summary: {str(e)}")
+        return error_response("Failed to get predictions summary", 500)
+
+@admin_bp.route('/predictions', methods=['GET'])
+@jwt_required()
+@admin_required
+def get_predictions():
+    """Get all predictions with pagination and filters"""
+    try:
+        # Get query parameters
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 10, type=int)
+        
+        # Get filters
+        filters = {
+            'risk_level': request.args.get('risk_level'),
+            'course_id': request.args.get('course_id'),
+            'grade': request.args.get('grade'),
+            'search': request.args.get('search'),
+            'date_from': request.args.get('date_from'),
+            'date_to': request.args.get('date_to')
+        }
+        
+        # Remove None values
+        filters = {k: v for k, v in filters.items() if v is not None}
+        
+        # Get predictions
+        result = prediction_analytics_service.get_predictions_list(page, per_page, filters)
+        
+        return api_response(
+            data={
+                'predictions': result['predictions'],
+                'pagination': {
+                    'page': result['current_page'],
+                    'per_page': result['per_page'],
+                    'total': result['total'],
+                    'pages': result['pages']
+                }
+            },
+            message="Predictions retrieved successfully"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error getting predictions: {str(e)}")
+        return error_response("Failed to get predictions", 500)
+
+@admin_bp.route('/predictions/<int:prediction_id>', methods=['GET'])
+@jwt_required()
+@admin_required
+def get_prediction_details(prediction_id):
+    """Get detailed prediction information"""
+    try:
+        details = prediction_analytics_service.get_prediction_details(prediction_id)
+        
+        if not details:
+            return error_response("Prediction not found", 404)
+        
+        return api_response(
+            data=details,
+            message="Prediction details retrieved successfully"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error getting prediction details: {str(e)}")
+        return error_response("Failed to get prediction details", 500)
+
+@admin_bp.route('/predictions/course/<int:course_id>', methods=['GET'])
+@jwt_required()
+@admin_required
+def get_course_predictions(course_id):
+    """Get prediction analytics for a specific course"""
+    try:
+        analytics = prediction_analytics_service.get_course_predictions(course_id)
+        
+        return api_response(
+            data=analytics,
+            message="Course predictions retrieved successfully"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error getting course predictions: {str(e)}")
+        return error_response("Failed to get course predictions", 500)
+
+@admin_bp.route('/predictions/model/performance', methods=['GET'])
+@jwt_required()
+@admin_required
+def get_model_performance():
+    """Get prediction model performance metrics"""
+    try:
+        performance = prediction_analytics_service.get_model_performance()
+        
+        return api_response(
+            data=performance,
+            message="Model performance retrieved successfully"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error getting model performance: {str(e)}")
+        return error_response("Failed to get model performance", 500)
+
+@admin_bp.route('/predictions/export', methods=['GET'])
+@jwt_required()
+@admin_required
+def export_predictions():
+    """Export predictions data"""
+    try:
+        # Get filters from query params
+        filters = {
+            'risk_level': request.args.get('risk_level'),
+            'course_id': request.args.get('course_id'),
+            'date_from': request.args.get('date_from'),
+            'date_to': request.args.get('date_to')
+        }
+        filters = {k: v for k, v in filters.items() if v is not None}
+        
+        # Get all predictions (no pagination for export)
+        result = prediction_service.get_predictions(1, 10000, filters)
+        
+        # Format for CSV
+        import csv
+        from io import StringIO
+        from flask import Response
+        
+        output = StringIO()
+        writer = csv.writer(output)
+        
+        # Write headers
+        writer.writerow([
+            'Student ID', 'Student Name', 'Course Code', 'Course Name',
+            'Predicted Grade', 'Current Grade', 'Risk Level', 'Confidence',
+            'Prediction Date'
+        ])
+        
+        # Write data
+        for pred in result['predictions']:
+            writer.writerow([
+                pred['student']['student_id'],
+                pred['student']['name'],
+                pred['course']['course_code'],
+                pred['course']['course_name'],
+                pred['predicted_grade'],
+                pred['current_grade'],
+                pred['risk_level'],
+                f"{pred['confidence_score']:.2%}",
+                pred['prediction_date']
+            ])
+        
+        # Create response
+        output.seek(0)
+        response = Response(
+            output.getvalue(),
+            mimetype='text/csv',
+            headers={
+                'Content-Disposition': f'attachment; filename=predictions_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+            }
+        )
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error exporting predictions: {str(e)}")
+        return error_response("Failed to export predictions", 500)
+
+@admin_bp.route('/predictions/trends', methods=['GET'])
+@jwt_required()
+@admin_required
+def get_prediction_trends():
+    """Get prediction trends over time"""
+    try:
+        # Get date range (default last 30 days)
+        days = request.args.get('days', 30, type=int)
+        start_date = datetime.now() - timedelta(days=days)
+        
+        # Query predictions grouped by date and risk level
+        trends = db.session.query(
+            func.date(Prediction.prediction_date).label('date'),
+            Prediction.risk_level,
+            func.count(Prediction.prediction_id).label('count')
+        ).filter(
+            Prediction.prediction_date >= start_date
+        ).group_by(
+            func.date(Prediction.prediction_date),
+            Prediction.risk_level
+        ).order_by(
+            func.date(Prediction.prediction_date)
+        ).all()
+        
+        # Format results
+        trend_data = {}
+        for date, risk_level, count in trends:
+            date_str = date.isoformat()
+            if date_str not in trend_data:
+                trend_data[date_str] = {
+                    'date': date_str,
+                    'high': 0,
+                    'medium': 0,
+                    'low': 0,
+                    'total': 0
+                }
+            trend_data[date_str][risk_level] = count
+            trend_data[date_str]['total'] += count
+        
+        # Convert to list and fill missing dates
+        result = []
+        current_date = start_date.date()
+        while current_date <= datetime.now().date():
+            date_str = current_date.isoformat()
+            if date_str in trend_data:
+                result.append(trend_data[date_str])
+            else:
+                result.append({
+                    'date': date_str,
+                    'high': 0,
+                    'medium': 0,
+                    'low': 0,
+                    'total': 0
+                })
+            current_date += timedelta(days=1)
+        
+        return api_response(
+            data={'trends': result},
+            message="Prediction trends retrieved successfully"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error getting prediction trends: {str(e)}")
+        return error_response("Failed to get prediction trends", 500)
     
+
+# report routes section...
+
+# Reports endpoints
+@admin_bp.route('/reports/executive-summary', methods=['GET'])
+@jwt_required()
+@admin_required
+def get_executive_summary():
+    """Get executive summary report"""
+    try:
+        # Get date range from query params
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        if start_date:
+            start_date = datetime.fromisoformat(start_date)
+        if end_date:
+            end_date = datetime.fromisoformat(end_date)
+        
+        summary = reports_service.get_executive_summary(start_date, end_date)
+        
+        return api_response(
+            data=summary,
+            message="Executive summary generated successfully"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error generating executive summary: {str(e)}")
+        return error_response("Failed to generate executive summary", 500)
+
+@admin_bp.route('/reports/student-performance', methods=['GET'])
+@jwt_required()
+@admin_required
+def get_student_performance_report():
+    """Get student performance report"""
+    try:
+        course_id = request.args.get('course_id', type=int)
+        
+        report = reports_service.get_student_performance_report(course_id)
+        
+        return api_response(
+            data=report,
+            message="Student performance report generated successfully"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error generating student performance report: {str(e)}")
+        return error_response("Failed to generate student performance report", 500)
+
+@admin_bp.route('/reports/course-analytics', methods=['GET'])
+@jwt_required()
+@admin_required
+def get_course_analytics_report():
+    """Get course analytics report"""
+    try:
+        report = reports_service.get_course_analytics_report()
+        
+        return api_response(
+            data=report,
+            message="Course analytics report generated successfully"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error generating course analytics report: {str(e)}")
+        return error_response("Failed to generate course analytics report", 500)
+
+@admin_bp.route('/reports/attendance-trends', methods=['GET'])
+@jwt_required()
+@admin_required
+def get_attendance_trends_report():
+    """Get attendance trends report"""
+    try:
+        days = request.args.get('days', 30, type=int)
+        
+        report = reports_service.get_attendance_trends_report(days)
+        
+        return api_response(
+            data=report,
+            message="Attendance trends report generated successfully"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error generating attendance trends report: {str(e)}")
+        return error_response("Failed to generate attendance trends report", 500)
+
+@admin_bp.route('/reports/system-usage', methods=['GET'])
+@jwt_required()
+@admin_required
+def get_system_usage_report():
+    """Get system usage report"""
+    try:
+        report = reports_service.get_system_usage_report()
+        
+        return api_response(
+            data=report,
+            message="System usage report generated successfully"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error generating system usage report: {str(e)}")
+        return error_response("Failed to generate system usage report", 500)

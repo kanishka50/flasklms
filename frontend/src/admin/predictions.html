@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Predictions Overview - Admin Panel</title>
+    <link href="../css/tailwind.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="bg-gray-100">
+    <!-- Navigation -->
+    <nav class="bg-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <i class="fas fa-user-shield text-2xl text-blue-600 mr-3"></i>
+                    <h1 class="text-xl font-semibold">Admin Panel</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span class="text-gray-700">Welcome, <span id="username" class="font-semibold">admin</span></span>
+                    <button id="logoutBtn" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded">
+                        <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="flex">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-gray-800 min-h-screen">
+            <nav class="mt-5">
+                <a href="dashboard.html" class="block py-2.5 px-4 text-gray-300 hover:bg-gray-700 hover:text-white">
+                    <i class="fas fa-tachometer-alt mr-3"></i>Dashboard
+                </a>
+                <a href="users.html" class="block py-2.5 px-4 text-gray-300 hover:bg-gray-700 hover:text-white">
+                    <i class="fas fa-users mr-3"></i>User Management
+                </a>
+                <a href="courses.html" class="block py-2.5 px-4 text-gray-300 hover:bg-gray-700 hover:text-white">
+                    <i class="fas fa-book mr-3"></i>Course Management
+                </a>
+                <a href="system-alerts.html" class="block py-2.5 px-4 text-gray-300 hover:bg-gray-700 hover:text-white">
+                    <i class="fas fa-bell mr-3"></i>System Alerts
+                </a>
+                <a href="predictions.html" class="block py-2.5 px-4 bg-gray-700 text-white">
+                    <i class="fas fa-chart-line mr-3"></i>Predictions Overview
+                </a>
+                <a href="reports.html" class="block py-2.5 px-4 text-gray-300 hover:bg-gray-700 hover:text-white">
+                    <i class="fas fa-file-alt mr-3"></i>Reports
+                </a>
+                <a href="settings.html" class="block py-2.5 px-4 text-gray-300 hover:bg-gray-700 hover:text-white">
+                    <i class="fas fa-cog mr-3"></i>System Settings
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 p-6">
+            <div class="max-w-7xl mx-auto">
+                <!-- Header -->
+                <div class="mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800">Predictions Overview</h2>
+                    <p class="text-gray-600">Monitor and analyze student grade predictions</p>
+                </div>
+
+                <!-- Summary Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="flex items-center">
+                            <div class="p-3 bg-blue-100 rounded-full">
+                                <i class="fas fa-chart-line text-blue-600 text-xl"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm text-gray-500">Total Predictions</p>
+                                <p class="text-2xl font-semibold" id="totalPredictions">0</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="flex items-center">
+                            <div class="p-3 bg-red-100 rounded-full">
+                                <i class="fas fa-exclamation-triangle text-red-600 text-xl"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm text-gray-500">High Risk</p>
+                                <p class="text-2xl font-semibold text-red-600" id="highRiskCount">0</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="flex items-center">
+                            <div class="p-3 bg-yellow-100 rounded-full">
+                                <i class="fas fa-exclamation-circle text-yellow-600 text-xl"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm text-gray-500">Medium Risk</p>
+                                <p class="text-2xl font-semibold text-yellow-600" id="mediumRiskCount">0</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="flex items-center">
+                            <div class="p-3 bg-green-100 rounded-full">
+                                <i class="fas fa-check-circle text-green-600 text-xl"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm text-gray-500">Model Accuracy</p>
+                                <p class="text-2xl font-semibold text-green-600" id="modelAccuracy">0%</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Row -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                    <!-- Risk Distribution Chart -->
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h3 class="text-lg font-semibold mb-4">Risk Distribution</h3>
+                        <div class="relative" style="height: 300px;">
+                            <canvas id="riskDistributionChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Grade Distribution Chart -->
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h3 class="text-lg font-semibold mb-4">Predicted Grade Distribution</h3>
+                        <div class="relative" style="height: 300px;">
+                            <canvas id="gradeDistributionChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Trend Chart -->
+                <div class="bg-white rounded-lg shadow p-6 mb-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-semibold">Prediction Trends (Last 30 Days)</h3>
+                        <select id="trendDays" class="px-3 py-1 border rounded">
+                            <option value="7">Last 7 days</option>
+                            <option value="30" selected>Last 30 days</option>
+                            <option value="90">Last 90 days</option>
+                        </select>
+                    </div>
+                    <div class="relative" style="height: 300px;">
+                        <canvas id="trendChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Model Performance -->
+                <div class="bg-white rounded-lg shadow p-6 mb-6">
+                    <h3 class="text-lg font-semibold mb-4">Model Performance</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div class="text-center">
+                            <p class="text-sm text-gray-500">Model Version</p>
+                            <p class="text-lg font-semibold" id="modelVersion">-</p>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-sm text-gray-500">Precision</p>
+                            <p class="text-lg font-semibold text-blue-600" id="modelPrecision">-</p>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-sm text-gray-500">Recall</p>
+                            <p class="text-lg font-semibold text-green-600" id="modelRecall">-</p>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-sm text-gray-500">F1 Score</p>
+                            <p class="text-lg font-semibold text-purple-600" id="modelF1">-</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Filters and Actions -->
+                <div class="bg-white rounded-lg shadow p-4 mb-4">
+                    <div class="grid grid-cols-1 md:grid-cols-6 gap-4">
+                        <select id="riskFilter" class="px-3 py-2 border rounded">
+                            <option value="">All Risk Levels</option>
+                            <option value="high">High Risk</option>
+                            <option value="medium">Medium Risk</option>
+                            <option value="low">Low Risk</option>
+                        </select>
+                        
+                        <select id="gradeFilter" class="px-3 py-2 border rounded">
+                            <option value="">All Grades</option>
+                            <option value="A">Grade A</option>
+                            <option value="B">Grade B</option>
+                            <option value="C">Grade C</option>
+                            <option value="D">Grade D</option>
+                            <option value="F">Grade F</option>
+                        </select>
+                        
+                        <select id="courseFilter" class="px-3 py-2 border rounded">
+                            <option value="">All Courses</option>
+                        </select>
+                        
+                        <input type="text" id="searchInput" placeholder="Search students..." 
+                               class="px-3 py-2 border rounded">
+                        
+                        <button id="applyFilters" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+                            <i class="fas fa-filter mr-2"></i>Apply Filters
+                        </button>
+                        
+                        <button id="exportBtn" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+                            <i class="fas fa-download mr-2"></i>Export
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Predictions List -->
+                <div class="bg-white rounded-lg shadow">
+                    <div class="px-6 py-4 border-b">
+                        <h3 class="text-lg font-semibold">Recent Predictions</h3>
+                    </div>
+                    
+                    <!-- Loading indicator -->
+                    <div id="loadingIndicator" class="hidden p-8 text-center">
+                        <i class="fas fa-spinner fa-spin text-3xl text-blue-600"></i>
+                        <p class="mt-2 text-gray-600">Loading predictions...</p>
+                    </div>
+                    
+                    <!-- Table -->
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Student
+                                    </th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Course
+                                    </th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Current Grade
+                                    </th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Predicted Grade
+                                    </th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Risk Level
+                                    </th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Confidence
+                                    </th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Date
+                                    </th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Actions
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody id="predictionsTableBody" class="bg-white divide-y divide-gray-200">
+                                <!-- Predictions will be populated here -->
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Pagination -->
+                    <div id="paginationContainer" class="px-6 py-4 border-t flex justify-between items-center">
+                        <div class="text-sm text-gray-700">
+                            Showing <span id="startRecord">0</span> to <span id="endRecord">0</span> of 
+                            <span id="totalRecords">0</span> results
+                        </div>
+                        <div class="flex space-x-2" id="paginationButtons">
+                            <!-- Pagination buttons will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Prediction Details Modal -->
+    <div id="detailsModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-11/12 max-w-4xl shadow-lg rounded-md bg-white">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-semibold">Prediction Details</h3>
+                <button id="closeModal" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            <div id="modalContent" class="space-y-4">
+                <!-- Modal content will be populated here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.2/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.3.3/dist/chart.umd.min.js"></script>
+    
+    <!-- Custom JavaScript -->
+    <script src="../js/api/client.js"></script>
+    <script src="../js/api/auth.js"></script>
+    <script src="../js/utils/auth-guard.js"></script>
+    <script src="../js/api/admin.js"></script>
+    <script src="../js/api/admin-predictions.js"></script>
+    <script src="../js/admin/predictions.js"></script>
+</body>
+</html>

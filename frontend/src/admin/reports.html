@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reports - Admin Panel</title>
+    <link href="../css/tailwind.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="bg-gray-100">
+    <!-- Navigation -->
+    <nav class="bg-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <i class="fas fa-user-shield text-2xl text-blue-600 mr-3"></i>
+                    <h1 class="text-xl font-semibold">Admin Panel</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span class="text-gray-700">Welcome, <span id="username" class="font-semibold">admin</span></span>
+                    <button id="logoutBtn" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded">
+                        <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="flex">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-gray-800 min-h-screen">
+            <nav class="mt-5">
+                <a href="dashboard.html" class="block py-2.5 px-4 text-gray-300 hover:bg-gray-700 hover:text-white">
+                    <i class="fas fa-tachometer-alt mr-3"></i>Dashboard
+                </a>
+                <a href="users.html" class="block py-2.5 px-4 text-gray-300 hover:bg-gray-700 hover:text-white">
+                    <i class="fas fa-users mr-3"></i>User Management
+                </a>
+                <a href="courses.html" class="block py-2.5 px-4 text-gray-300 hover:bg-gray-700 hover:text-white">
+                    <i class="fas fa-book mr-3"></i>Course Management
+                </a>
+                <a href="system-alerts.html" class="block py-2.5 px-4 text-gray-300 hover:bg-gray-700 hover:text-white">
+                    <i class="fas fa-bell mr-3"></i>System Alerts
+                </a>
+                <a href="predictions.html" class="block py-2.5 px-4 text-gray-300 hover:bg-gray-700 hover:text-white">
+                    <i class="fas fa-chart-line mr-3"></i>Predictions Overview
+                </a>
+                <a href="reports.html" class="block py-2.5 px-4 bg-gray-700 text-white">
+                    <i class="fas fa-file-alt mr-3"></i>Reports
+                </a>
+                <a href="settings.html" class="block py-2.5 px-4 text-gray-300 hover:bg-gray-700 hover:text-white">
+                    <i class="fas fa-cog mr-3"></i>System Settings
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 p-6">
+            <div class="max-w-7xl mx-auto">
+                <!-- Header -->
+                <div class="mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800">Reports</h2>
+                    <p class="text-gray-600">Generate and view system reports</p>
+                </div>
+
+                <!-- Report Types Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+                    <!-- Executive Summary -->
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="flex items-center mb-4">
+                            <div class="p-3 bg-blue-100 rounded-full">
+                                <i class="fas fa-chart-pie text-blue-600 text-xl"></i>
+                            </div>
+                            <h3 class="ml-3 text-lg font-semibold">Executive Summary</h3>
+                        </div>
+                        <p class="text-gray-600 text-sm mb-4">Overall system performance and key metrics</p>
+                        <button onclick="loadExecutiveSummary()" class="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+                            Generate Report
+                        </button>
+                    </div>
+
+                    <!-- Student Performance -->
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="flex items-center mb-4">
+                            <div class="p-3 bg-green-100 rounded-full">
+                                <i class="fas fa-user-graduate text-green-600 text-xl"></i>
+                            </div>
+                            <h3 class="ml-3 text-lg font-semibold">Student Performance</h3>
+                        </div>
+                        <p class="text-gray-600 text-sm mb-4">Detailed student grades and attendance</p>
+                        <button onclick="loadStudentPerformance()" class="w-full bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+                            Generate Report
+                        </button>
+                    </div>
+
+                    <!-- Course Analytics -->
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="flex items-center mb-4">
+                            <div class="p-3 bg-purple-100 rounded-full">
+                                <i class="fas fa-book-open text-purple-600 text-xl"></i>
+                            </div>
+                            <h3 class="ml-3 text-lg font-semibold">Course Analytics</h3>
+                        </div>
+                        <p class="text-gray-600 text-sm mb-4">Course performance and risk distribution</p>
+                        <button onclick="loadCourseAnalytics()" class="w-full bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">
+                            Generate Report
+                        </button>
+                    </div>
+
+                    <!-- Attendance Trends -->
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="flex items-center mb-4">
+                            <div class="p-3 bg-yellow-100 rounded-full">
+                                <i class="fas fa-calendar-check text-yellow-600 text-xl"></i>
+                            </div>
+                            <h3 class="ml-3 text-lg font-semibold">Attendance Trends</h3>
+                        </div>
+                        <p class="text-gray-600 text-sm mb-4">Attendance patterns over time</p>
+                        <button onclick="loadAttendanceTrends()" class="w-full bg-yellow-600 text-white px-4 py-2 rounded hover:bg-yellow-700">
+                            Generate Report
+                        </button>
+                    </div>
+
+                    <!-- System Usage -->
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="flex items-center mb-4">
+                            <div class="p-3 bg-red-100 rounded-full">
+                                <i class="fas fa-server text-red-600 text-xl"></i>
+                            </div>
+                            <h3 class="ml-3 text-lg font-semibold">System Usage</h3>
+                        </div>
+                        <p class="text-gray-600 text-sm mb-4">User activity and system utilization</p>
+                        <button onclick="loadSystemUsage()" class="w-full bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">
+                            Generate Report
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Report Display Area -->
+                <div id="reportContent" class="hidden">
+                    <!-- Report Header -->
+                    <div class="bg-white rounded-lg shadow p-6 mb-6">
+                        <div class="flex justify-between items-center">
+                            <h3 id="reportTitle" class="text-xl font-semibold">Report Title</h3>
+                            <div class="flex space-x-2">
+                                <button onclick="printReport()" class="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700">
+                                    <i class="fas fa-print mr-2"></i>Print
+                                </button>
+                                <button onclick="exportReport()" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+                                    <i class="fas fa-download mr-2"></i>Export
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Report Body -->
+                    <div id="reportBody" class="bg-white rounded-lg shadow p-6">
+                        <!-- Report content will be populated here -->
+                    </div>
+                </div>
+
+                <!-- Loading Indicator -->
+                <div id="loadingIndicator" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+                    <div class="bg-white p-6 rounded-lg">
+                        <i class="fas fa-spinner fa-spin text-3xl text-blue-600"></i>
+                        <p class="mt-2 text-gray-600">Generating report...</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- JavaScript Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.2/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.3.3/dist/chart.umd.min.js"></script>
+    
+    <!-- Custom JavaScript -->
+    <script src="../js/api/client.js"></script>
+    <script src="../js/api/auth.js"></script>
+    <script src="../js/utils/auth-guard.js"></script>
+    <script src="../js/api/admin.js"></script>
+    <script src="../js/admin/reports.js"></script>
+</body>
+</html>
