@@ -125,13 +125,21 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
         
-        // Modal
-        closeModal.addEventListener('click', closeAlertModal);
+        // Modal - Fix: Use the actual function name
+        closeModal.addEventListener('click', function() {
+            closeAlertModal();
+        });
+        
         alertModal.addEventListener('click', function(e) {
             if (e.target === alertModal) {
                 closeAlertModal();
             }
         });
+    }
+    
+    // Define closeAlertModal function at the top level
+    function closeAlertModal() {
+        alertModal.classList.add('hidden');
     }
     
     async function loadStatistics() {
@@ -172,6 +180,15 @@ document.addEventListener('DOMContentLoaded', function() {
     
     async function loadAlerts() {
         try {
+            // Show loading
+            alertsTableBody.innerHTML = `
+                <tr>
+                    <td colspan="8" class="px-6 py-4 text-center text-gray-500">
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Loading alerts...
+                    </td>
+                </tr>
+            `;
+            
             const params = {
                 page: currentPage,
                 limit: 10,
@@ -181,17 +198,34 @@ document.addEventListener('DOMContentLoaded', function() {
             const response = await adminApi.getSystemAlerts(params);
             
             if (response.status === 'success' && response.data) {
-                alerts = response.data.alerts;
-                currentPage = response.data.current_page;
-                totalPages = response.data.total_pages;
+                // Handle both possible response structures
+                if (Array.isArray(response.data)) {
+                    alerts = response.data;
+                    totalPages = response.pagination ? Math.ceil(response.pagination.total / 10) : 1;
+                } else if (response.data.alerts) {
+                    alerts = response.data.alerts;
+                    currentPage = response.data.current_page || 1;
+                    totalPages = response.data.total_pages || 1;
+                }
                 
                 displayAlerts(alerts);
-                updatePagination(response.data);
+                updatePagination({
+                    current_page: currentPage,
+                    per_page: 10,
+                    total: response.pagination ? response.pagination.total : alerts.length
+                });
             }
         } catch (error) {
             console.error('Error loading alerts:', error);
             
-            // Show demo data
+            // Check if it's an authentication error
+            if (error.response && error.response.status === 401) {
+                alert('Session expired. Please login again.');
+                authApi.logout();
+                return;
+            }
+            
+            // Show demo data for development
             const demoAlerts = [
                 {
                     alert_id: 1,
@@ -264,41 +298,41 @@ document.addEventListener('DOMContentLoaded', function() {
                 <tr class="hover:bg-gray-50 ${!alert.is_read ? 'bg-blue-50' : ''}">
                     <td class="px-6 py-4">
                         <input type="checkbox" class="rounded border-gray-300" 
-                               data-alert-id="${alert.alert_id}"
-                               ${selectedAlerts.has(alert.alert_id) ? 'checked' : ''}>
+                               data-alert-id="${alert.alert_id || alert.id}"
+                               ${selectedAlerts.has(alert.alert_id || alert.id) ? 'checked' : ''}>
                     </td>
                     <td class="px-6 py-4">
                         <div>
-                            <div class="text-sm font-medium text-gray-900">${alert.type}</div>
+                            <div class="text-sm font-medium text-gray-900">${alert.type || alert.alert_type}</div>
                             <div class="text-sm text-gray-500">${alert.message}</div>
                         </div>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
                         <div class="text-sm">
-                            <div class="font-medium text-gray-900">${alert.student_name}</div>
-                            <div class="text-gray-500">${alert.student_id}</div>
+                            <div class="font-medium text-gray-900">${alert.student_name || 'N/A'}</div>
+                            <div class="text-gray-500">${alert.student_id || ''}</div>
                         </div>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        ${alert.course_name}
+                        ${alert.course_name || 'N/A'}
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
-                        <span class="px-2 py-1 text-xs font-medium ${severityColors[alert.severity]} rounded-full">
+                        <span class="px-2 py-1 text-xs font-medium ${severityColors[alert.severity] || 'text-gray-600 bg-gray-100'} rounded-full">
                             ${alert.severity}
                         </span>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        ${formatDate(alert.triggered_date)}
+                        ${formatDate(alert.triggered_date || alert.created_at)}
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
                         ${statusBadge}
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <button onclick="viewAlert(${alert.alert_id})" class="text-indigo-600 hover:text-indigo-900 mr-2">
+                        <button onclick="viewAlert(${alert.alert_id || alert.id})" class="text-indigo-600 hover:text-indigo-900 mr-2">
                             <i class="fas fa-eye"></i>
                         </button>
                         ${!alert.is_resolved ? `
-                            <button onclick="resolveAlert(${alert.alert_id})" class="text-green-600 hover:text-green-900">
+                            <button onclick="resolveAlert(${alert.alert_id || alert.id})" class="text-green-600 hover:text-green-900">
                                 <i class="fas fa-check"></i>
                             </button>
                         ` : ''}
@@ -324,12 +358,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function updatePagination(data) {
-        const start = (data.current_page - 1) * data.per_page + 1;
-        const end = Math.min(data.current_page * data.per_page, data.total);
+        const start = ((data.current_page || 1) - 1) * (data.per_page || 10) + 1;
+        const end = Math.min((data.current_page || 1) * (data.per_page || 10), data.total || 0);
         
-        startRecord.textContent = start;
+        startRecord.textContent = data.total > 0 ? start : 0;
         endRecord.textContent = end;
-        totalRecords.textContent = data.total;
+        totalRecords.textContent = data.total || 0;
         
         prevPage.disabled = currentPage === 1;
         nextPage.disabled = currentPage === totalPages;
@@ -450,7 +484,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Global functions
     window.viewAlert = async function(alertId) {
-        const alert = alerts.find(a => a.alert_id === alertId);
+        const alert = alerts.find(a => (a.alert_id || a.id) === alertId);
         if (!alert) return;
         
         // Show alert details in modal
@@ -458,7 +492,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <div class="space-y-4">
                 <div>
                     <h4 class="text-sm font-medium text-gray-500">Alert Type</h4>
-                    <p class="mt-1 text-lg">${alert.type}</p>
+                    <p class="mt-1 text-lg">${alert.type || alert.alert_type}</p>
                 </div>
                 
                 <div>
@@ -469,12 +503,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <h4 class="text-sm font-medium text-gray-500">Student</h4>
-                        <p class="mt-1">${alert.student_name} (${alert.student_id})</p>
+                        <p class="mt-1">${alert.student_name || 'N/A'} ${alert.student_id ? `(${alert.student_id})` : ''}</p>
                     </div>
                     
                     <div>
                         <h4 class="text-sm font-medium text-gray-500">Course</h4>
-                        <p class="mt-1">${alert.course_name}</p>
+                        <p class="mt-1">${alert.course_name || 'N/A'}</p>
                     </div>
                 </div>
                 
@@ -494,7 +528,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     <div>
                         <h4 class="text-sm font-medium text-gray-500">Triggered Date</h4>
-                        <p class="mt-1">${new Date(alert.triggered_date).toLocaleString()}</p>
+                        <p class="mt-1">${new Date(alert.triggered_date || alert.created_at).toLocaleString()}</p>
                     </div>
                 </div>
                 
@@ -510,7 +544,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 <div class="flex justify-end space-x-3 pt-4 border-t">
                     ${!alert.is_resolved ? `
-                        <button onclick="resolveAlert(${alert.alert_id}); closeAlertModal();" 
+                        <button onclick="resolveAlert(${alert.alert_id || alert.id}); closeAlertModal();" 
                                 class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md">
                             <i class="fas fa-check mr-2"></i>Resolve Alert
                         </button>
@@ -528,10 +562,12 @@ document.addEventListener('DOMContentLoaded', function() {
     window.resolveAlert = async function(alertId) {
         if (confirm('Are you sure you want to resolve this alert?')) {
             try {
-                // In a real implementation, this would call the API
-                alert('Alert resolved successfully');
-                loadAlerts();
-                loadStatistics();
+                const response = await adminApi.resolveAlert(alertId);
+                if (response.status === 'success') {
+                    alert('Alert resolved successfully');
+                    loadAlerts();
+                    loadStatistics();
+                }
             } catch (error) {
                 console.error('Error resolving alert:', error);
                 alert('Failed to resolve alert');
@@ -539,11 +575,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
     
-    window.closeAlertModal = function() {
-        alertModal.classList.add('hidden');
-    };
+    // Make closeAlertModal available globally as well
+    window.closeAlertModal = closeAlertModal;
     
     function formatDate(dateString) {
+        if (!dateString) return 'N/A';
+        
         const date = new Date(dateString);
         const now = new Date();
         const diff = now - date;
