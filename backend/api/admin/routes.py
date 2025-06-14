@@ -13,6 +13,12 @@ logger = logging.getLogger('app')
 
 admin_bp = Blueprint('admin', __name__)
 
+# Test endpoint
+@admin_bp.route('/test', methods=['GET'])
+def test_admin():
+    """Test admin endpoint"""
+    return api_response(message="Admin API is working!")
+
 # Statistics endpoint
 @admin_bp.route('/statistics', methods=['GET'])
 @jwt_required()
