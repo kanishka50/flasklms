@@ -1,11 +1,12 @@
 from flask import Blueprint, request, jsonify, current_app
 from backend.models import User, Student, Faculty, Course, CourseOffering, Enrollment, Prediction, Alert
 from backend.extensions import db
+from backend.models.alert import AlertType
 from backend.utils.api import api_response, error_response
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from backend.middleware.auth_middleware import admin_required
 from werkzeug.security import generate_password_hash
-from sqlalchemy import or_, func
+from sqlalchemy import desc, or_, func
 import logging
 from datetime import datetime, timedelta
 from backend.services.alert_service import AlertService
@@ -786,7 +787,6 @@ def get_alert_stats():
     """Get alert statistics"""
     try:
         summary = alert_service.get_alert_summary()
-        
         return api_response({
             'total_alerts': Alert.query.count(),
             'active_alerts': summary['total'],
@@ -801,6 +801,7 @@ def get_alert_stats():
     except Exception as e:
         logger.error(f"Error fetching alert stats: {str(e)}")
         return error_response('Failed to fetch alert statistics', 500)
+    
     
 def paginated_response(data, page, per_page, total, message='Success'):
     """Create a paginated response"""
