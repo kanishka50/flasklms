@@ -5,7 +5,8 @@ from backend.extensions import db, login_manager, jwt, cors, mail, migrate
 from backend.utils.cors import configure_cors
 from flask_jwt_extended import JWTManager
 from flask import send_from_directory
-# REMOVE THIS LINE: from backend.api.student.routes import student_bp
+from backend.middleware.activity_tracker import ActivityTracker
+
 
 def create_app(config_name=None):
     """Create and configure the Flask application"""
@@ -74,6 +75,10 @@ def initialize_extensions(app):
     jwt.init_app(app)
     # Remove cors.init_app(app) since we're using configure_cors
     mail.init_app(app)
+
+     # Initialize activity tracker HERE
+    activity_tracker = ActivityTracker(app)
+    app.logger.info("Activity tracker initialized")
     
     # Configure login manager
     from backend.models import User
@@ -81,6 +86,8 @@ def initialize_extensions(app):
     @login_manager.user_loader
     def load_user(user_id):
         return User.query.get(int(user_id))
+    
+   
     
     login_manager.login_view = 'auth.login'
     login_manager.login_message = 'Please log in to access this page'
@@ -98,6 +105,7 @@ def register_blueprints(app):
         from backend.api.admin import admin_bp
         from backend.api.prediction import prediction_bp
         from backend.api.common import common_bp
+        from backend.api.alert import alert_bp
         
         
         # Register blueprints with URL prefixes
@@ -109,6 +117,7 @@ def register_blueprints(app):
         app.register_blueprint(admin_bp, url_prefix='/api/admin')
         app.register_blueprint(prediction_bp, url_prefix='/api/prediction')
         app.register_blueprint(common_bp, url_prefix='/api/common')
+        app.register_blueprint(alert_bp)
         
         app.logger.info("All blueprints registered successfully")
         
@@ -152,9 +161,20 @@ def register_shell_context(app):
     app.shell_context_processor(shell_context)
     app.logger.info("Shell context registered")
 
+    
 def register_commands(app):
     """Register custom commands"""
-    # Skip command registration for now
-    app.logger.info("Commands registration skipped")
-    pass
+    try:
+        # Import and register commands from separate file
+        from backend.commands import register_commands as register_cmds
+        register_cmds(app)
+        app.logger.info("Commands registered successfully")
+    except ImportError as e:
+        app.logger.error(f"Error importing commands: {str(e)}")
+        # Fallback - register at least a test command
+        @app.cli.command()
+        def test_commands():
+            """Test if commands are working"""
+            print("Basic commands are working!")
+            print("But main commands file not found: backend/commands.py")
 

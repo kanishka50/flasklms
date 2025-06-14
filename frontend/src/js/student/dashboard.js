@@ -315,4 +315,12 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }, 5000);
     }
+
+    // ADD THIS: Initialize the alert manager
+    if (typeof alertManager !== 'undefined') {
+        alertManager.init();
+        console.log('Alert manager initialized');
+    }
+
+
 });

@@ -1,15 +1,14 @@
-from functools import wraps
-from flask import request, g
-from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request_optional
-from backend.models import LMSSession, LMSActivity, User, Enrollment
-from backend.extensions import db
-from datetime import datetime
 import logging
+from datetime import datetime
+from flask import request, g
+from backend.models.tracking import LMSSession, LMSActivity
+from backend.models import Enrollment
+from backend.extensions import db
 
-logger = logging.getLogger('activity_tracker')
+logger = logging.getLogger(__name__)
 
 class ActivityTracker:
-    """Middleware to track user activities in the LMS"""
+    """Middleware to track user activities in the system"""
     
     def __init__(self, app=None):
         self.app = app
@@ -20,123 +19,95 @@ class ActivityTracker:
         """Initialize the activity tracker with the Flask app"""
         app.before_request(self.before_request)
         app.after_request(self.after_request)
-        logger.info("Activity tracker initialized")
+        self.excluded_paths = app.config.get('ACTIVITY_TRACKER_EXCLUDED_PATHS', [
+            '/api/auth/login',
+            '/api/auth/logout', 
+            '/api/auth/refresh',
+            '/static'
+        ])
     
     def before_request(self):
         """Called before each request"""
-        # Track request start time
-        g.request_start_time = datetime.now()
+        # Store request start time
+        g.request_start_time = datetime.utcnow()
         
-        # Try to get current user
-        try:
-            verify_jwt_in_request_optional()
-            user_id = get_jwt_identity()
-            
-            if user_id:
-                user = User.query.get(user_id)
-                if user:
-                    g.current_user = user
-                    
-                    # Get or create session for student
-                    if user.user_type == 'student' and user.student:
-                        self._ensure_session(user.student.student_id)
-        except:
-            # No valid JWT or other error
-            pass
+        # Skip tracking for excluded paths
+        if self._should_skip_tracking():
+            return
+        
+        # Track session if user is authenticated
+        if hasattr(g, 'current_user') and g.current_user:
+            self._ensure_session()
     
     def after_request(self, response):
         """Called after each request"""
-        # Only track for authenticated students
-        if hasattr(g, 'current_user') and g.current_user and g.current_user.user_type == 'student':
-            # Skip tracking for API calls that shouldn't be tracked
-            if not self._should_track_request():
-                return response
-            
-            try:
-                # Track the activity
-                self._track_activity()
-            except Exception as e:
-                logger.error(f"Error tracking activity: {str(e)}")
+        # Skip tracking for excluded paths
+        if self._should_skip_tracking():
+            return response
+        
+        # Track activity if user is authenticated
+        if hasattr(g, 'current_user') and g.current_user and hasattr(g, 'current_session'):
+            self._track_activity()
         
         return response
     
-    def _should_track_request(self):
-        """Determine if this request should be tracked"""
-        # Don't track auth endpoints
-        if request.path.startswith('/api/auth'):
-            return False
-        
-        # Don't track static files
-        if request.path.startswith('/static'):
-            return False
-        
-        # Don't track prediction generation
-        if '/predictions/generate' in request.path:
-            return False
-        
-        # Track these specific paths
-        tracked_paths = [
-            '/student/',  # Student pages
-            '/api/student/courses',  # Course views
-            '/api/student/assessments',  # Assessment views
-            '/api/student/resources',  # Resource access
-        ]
-        
-        return any(request.path.startswith(path) for path in tracked_paths)
+    def _should_skip_tracking(self):
+        """Check if current path should be excluded from tracking"""
+        for path in self.excluded_paths:
+            if request.path.startswith(path):
+                return True
+        return False
     
-    def _ensure_session(self, student_id):
-        """Ensure there's an active session for the student"""
-        # Check for active session in last 30 minutes
-        last_session = LMSSession.query.filter(
-            LMSSession.student_id == student_id,
-            LMSSession.logout_time.is_(None)
-        ).order_by(LMSSession.login_time.desc()).first()
-        
-        now = datetime.now()
-        
-        # Create new session if needed
-        if not last_session or (now - last_session.login_time).seconds > 1800:  # 30 minutes
-            # Close old session if exists
-            if last_session:
-                last_session.logout_time = now
-                db.session.commit()
+    def _ensure_session(self):
+        """Ensure user has an active session"""
+        if not hasattr(g, 'current_session'):
+            # Get all active enrollments for the user
+            enrollments = self._get_user_enrollments()
             
-            # Create new session for each active enrollment
-            enrollments = Enrollment.query.filter(
-                Enrollment.student_id == student_id,
-                Enrollment.enrollment_status == 'enrolled'
-            ).all()
-            
-            for enrollment in enrollments:
-                session = LMSSession(
+            if enrollments:
+                # For now, we'll use the first enrollment
+                # In a real scenario, you might want to determine which course 
+                # the activity is related to based on the URL or request data
+                enrollment = enrollments[0]
+                
+                # Look for active session
+                session = LMSSession.query.filter_by(
                     enrollment_id=enrollment.enrollment_id,
-                    login_time=now,
-                    ip_address=request.remote_addr or 'unknown'
-                )
-                db.session.add(session)
-            
-            db.session.commit()
-            
-            # Store session IDs in g
-            g.lms_sessions = {e.enrollment_id: session.session_id for e, session in 
-                            zip(enrollments, LMSSession.query.filter(
-                                LMSSession.enrollment_id.in_([e.enrollment_id for e in enrollments]),
-                                LMSSession.logout_time.is_(None)
-                            ).all())}
-        else:
-            # Get all active sessions for this student
-            active_sessions = LMSSession.query.join(
-                Enrollment, LMSSession.enrollment_id == Enrollment.enrollment_id
-            ).filter(
-                Enrollment.student_id == student_id,
-                LMSSession.logout_time.is_(None)
+                    logout_time=None
+                ).order_by(LMSSession.login_time.desc()).first()
+                
+                # Create new session if none exists or last one is too old
+                if not session or (datetime.utcnow() - session.login_time).seconds > 3600:
+                    session = LMSSession(
+                        enrollment_id=enrollment.enrollment_id,
+                        login_time=datetime.utcnow(),
+                        ip_address=request.remote_addr,
+                        user_agent=request.user_agent.string[:255] if request.user_agent else None
+                    )
+                    db.session.add(session)
+                    db.session.commit()
+                
+                g.current_session = session
+                g.current_enrollment_id = enrollment.enrollment_id
+    
+    def _get_user_enrollments(self):
+        """Get active enrollments for current user"""
+        if not g.current_user:
+            return []
+        
+        # Check if user is a student
+        if hasattr(g.current_user, 'student'):
+            enrollments = Enrollment.query.filter_by(
+                student_id=g.current_user.student.student_id,
+                enrollment_status='enrolled'
             ).all()
-            
-            g.lms_sessions = {s.enrollment_id: s.session_id for s in active_sessions}
+            return enrollments
+        
+        return []
     
     def _track_activity(self):
         """Track the current activity"""
-        if not hasattr(g, 'lms_sessions') or not g.lms_sessions:
+        if not hasattr(g, 'current_session') or not hasattr(g, 'current_enrollment_id'):
             return
         
         # Determine activity type based on request
@@ -144,103 +115,95 @@ class ActivityTracker:
         if not activity_type:
             return
         
-        # Get resource ID if applicable
-        resource_id = self._extract_resource_id()
-        
-        # Calculate duration
-        duration = None
-        if hasattr(g, 'request_start_time'):
-            duration = (datetime.now() - g.request_start_time).seconds
-        
-        # Create activity for each active session
-        for enrollment_id, session_id in g.lms_sessions.items():
-            # Check if this activity is relevant to this enrollment
-            if self._is_activity_relevant(enrollment_id):
-                activity = LMSActivity(
-                    session_id=session_id,
-                    activity_type=activity_type,
-                    resource_id=resource_id,
-                    activity_timestamp=datetime.now(),
-                    duration_seconds=duration
-                )
-                db.session.add(activity)
-        
         try:
+            # Calculate duration
+            duration = None
+            if hasattr(g, 'request_start_time'):
+                duration = int((datetime.utcnow() - g.request_start_time).total_seconds())
+            
+            # Create activity record with both session_id and enrollment_id
+            activity = LMSActivity(
+                session_id=g.current_session.session_id,
+                enrollment_id=g.current_enrollment_id,  # Now we're passing this required parameter
+                activity_type=activity_type,
+                activity_timestamp=datetime.utcnow(),
+                resource_id=self._get_resource_id(),
+                resource_name=self._get_resource_name(),
+                duration_seconds=duration
+            )
+            
+            db.session.add(activity)
             db.session.commit()
-            logger.debug(f"Tracked activity: {activity_type} for user {g.current_user.username}")
+            
+            logger.debug(f"Tracked activity: {activity_type} for enrollment {g.current_enrollment_id}")
+            
         except Exception as e:
+            logger.error(f"Error tracking activity: {str(e)}")
             db.session.rollback()
-            logger.error(f"Error saving activity: {str(e)}")
     
     def _determine_activity_type(self):
-        """Determine the type of activity based on the request"""
+        """Determine activity type based on request"""
         path = request.path.lower()
-        method = request.method
         
-        # Page views
-        if method == 'GET':
-            if 'dashboard' in path:
-                return 'dashboard_view'
-            elif 'course' in path:
-                return 'course_view'
-            elif 'assessment' in path or 'assignment' in path:
-                return 'assignment_view'
-            elif 'grade' in path:
-                return 'grade_view'
-            elif 'resource' in path:
-                return 'resource_view'
-            elif 'forum' in path:
-                return 'forum_view'
-            else:
-                return 'page_view'
-        
-        # Actions
-        elif method == 'POST':
-            if 'forum' in path:
+        # Map paths to activity types
+        if '/dashboard' in path:
+            return 'page_view'
+        elif '/courses' in path:
+            return 'resource_view'
+        elif '/assessments' in path:
+            return 'assignment_view'
+        elif '/quiz' in path:
+            return 'quiz_attempt'
+        elif '/forum' in path:
+            if request.method == 'POST':
                 return 'forum_post'
-            elif 'submit' in path:
-                return 'assignment_submit'
-            elif 'download' in path:
-                return 'file_download'
+            return 'page_view'
+        elif '/video' in path:
+            return 'video_watch'
+        elif '/download' in path:
+            return 'file_download'
+        elif '/predictions' in path:
+            return 'page_view'
+        else:
+            # Default to page_view for GET requests
+            if request.method == 'GET':
+                return 'page_view'
         
         return None
     
-    def _extract_resource_id(self):
-        """Extract resource ID from the request"""
-        # Try to get ID from path
-        path_parts = request.path.split('/')
-        for i, part in enumerate(path_parts):
-            if part.isdigit() and i > 0:
-                # Previous part might indicate resource type
-                return f"{path_parts[i-1]}_{part}"
-        
-        # Try to get from query parameters
-        if 'id' in request.args:
-            return str(request.args.get('id'))
-        
-        return request.path
+    def _get_resource_id(self):
+        """Extract resource ID from request"""
+        # Try to get ID from various sources
+        if 'id' in request.view_args:
+            return str(request.view_args['id'])
+        elif 'course_id' in request.view_args:
+            return str(request.view_args['course_id'])
+        elif 'assessment_id' in request.view_args:
+            return str(request.view_args['assessment_id'])
+        return None
     
-    def _is_activity_relevant(self, enrollment_id):
-        """Check if this activity is relevant to the enrollment"""
-        # For now, track all activities for all enrollments
-        # In the future, you might want to filter by course
-        return True
+    def _get_resource_name(self):
+        """Get a descriptive name for the resource"""
+        # This is simplified - in production you'd look up actual names
+        endpoint = request.endpoint or ''
+        return endpoint.replace('_', ' ').title()
 
-# Function to track specific actions
-def track_action(activity_type, resource_id=None, enrollment_id=None):
-    """Manually track a specific action"""
+def track_activity(activity_type, resource_id=None, resource_name=None, **kwargs):
+    """Manual activity tracking function"""
     try:
-        if hasattr(g, 'current_user') and g.current_user.user_type == 'student':
-            if enrollment_id and hasattr(g, 'lms_sessions'):
-                session_id = g.lms_sessions.get(enrollment_id)
-                if session_id:
-                    activity = LMSActivity(
-                        session_id=session_id,
-                        activity_type=activity_type,
-                        resource_id=resource_id,
-                        activity_timestamp=datetime.now()
-                    )
-                    db.session.add(activity)
-                    db.session.commit()
+        if hasattr(g, 'current_session') and hasattr(g, 'current_enrollment_id'):
+            activity = LMSActivity(
+                session_id=g.current_session.session_id,
+                enrollment_id=g.current_enrollment_id,
+                activity_type=activity_type,
+                activity_timestamp=datetime.utcnow(),
+                resource_id=resource_id,
+                resource_name=resource_name,
+                **kwargs
+            )
+            db.session.add(activity)
+            db.session.commit()
+            logger.debug(f"Manually tracked activity: {activity_type}")
     except Exception as e:
-        logger.error(f"Error tracking action: {str(e)}")
+        logger.error(f"Error in manual activity tracking: {str(e)}")
+        db.session.rollback()

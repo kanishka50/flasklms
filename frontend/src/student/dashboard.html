@@ -1,4 +1,3 @@
-<!-- Improved Navigation with User Dropdown -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -14,6 +13,7 @@
     
     <!-- Custom CSS -->
     <link href="../css/main.css" rel="stylesheet">
+    
     <style>
     /* Active page highlighting */
     .nav-link.active,
@@ -105,8 +105,10 @@
                         </a>
                     </div>
                     
-                    <!-- User Dropdown Menu -->
+                    <!-- User Dropdown Menu - This is where alerts will be added -->
                     <div class="flex items-center space-x-4">
+                        <!-- Alert bell will be inserted here by alerts.js -->
+                        
                         <!-- Desktop User Dropdown -->
                         <div class="hidden md:block relative">
                             <button id="userMenuBtn" 
@@ -123,7 +125,6 @@
                                 <!-- User Info Header -->
                                 <div class="px-4 py-3 border-b border-gray-200">
                                     <p class="text-sm font-medium text-gray-900" id="dropdownUsername">Student Name</p>
-                                    <!-- <p class="text-sm text-gray-500" id="dropdownEmail">student@university.edu</p> -->
                                 </div>
                                 
                                 <!-- Menu Items -->
@@ -158,7 +159,6 @@
                             </div>
                             <div>
                                 <p class="text-sm font-medium text-white" id="mobileUsername">Loading...</p>
-                                <!-- <p class="text-xs text-gray-400" id="mobileEmail">student@university.edu</p> -->
                             </div>
                         </div>
                     </div>
@@ -335,8 +335,15 @@
     <script src="../js/api/client.js"></script>
     <script src="../js/api/auth.js"></script>
     <script src="../js/utils/auth-guard.js"></script>
-    <script src="../js/api/student.js"></script> 
+    <script src="../js/api/student.js"></script>
+    
+    <!-- Alert component - CORRECTED PATH -->
+    <script src="../js/components/alerts.js"></script>
+    
+    <!-- Dashboard script -->
     <script src="../js/student/dashboard.js"></script>
+    
+    <!-- Navigation script -->
     <script>
     document.addEventListener('DOMContentLoaded', function() {
         // Elements

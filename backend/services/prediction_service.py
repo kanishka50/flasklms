@@ -368,3 +368,40 @@ class PredictionService:
             return 'decreased'
         else:
             return 'unchanged'
+        
+    @staticmethod
+    def update_feature_cache_for_all_students():
+        """
+        Update feature cache for all active students
+        Run this as a scheduled job (e.g., every night)
+        """
+        try:
+            # Get all active enrollments
+            active_enrollments = db.session.query(Enrollment).filter(
+                Enrollment.enrollment_status == 'enrolled'
+            ).all()
+            
+            logger.info(f"Updating feature cache for {len(active_enrollments)} enrollments")
+            
+            feature_calculator = FeatureCalculator()
+            
+            for enrollment in active_enrollments:
+                try:
+                    # Calculate features
+                    features = feature_calculator.calculate_features_for_enrollment(
+                        enrollment.enrollment_id
+                    )
+                    
+                    # Save to cache
+                    prediction_service = PredictionService()
+                    prediction_service._cache_features(enrollment.enrollment_id, features)
+                    
+                except Exception as e:
+                    logger.error(f"Error caching features for enrollment {enrollment.enrollment_id}: {str(e)}")
+            
+            db.session.commit()
+            logger.info("Feature cache update completed")
+            
+        except Exception as e:
+            logger.error(f"Error updating feature cache: {str(e)}")
+            db.session.rollback()
