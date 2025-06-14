@@ -413,74 +413,105 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function initializeChart() {
-        const ctx = document.getElementById('alertTrendsChart').getContext('2d');
+    // Get the canvas element
+    const canvas = document.getElementById('alertTrendsChart');
+    if (!canvas) {
+        console.error('Chart canvas not found');
+        return;
+    }
+    
+    // Fix: Set explicit dimensions for the canvas
+    const container = canvas.parentElement;
+    canvas.width = container.offsetWidth;
+    canvas.height = 400; // Fixed height
+    
+    const ctx = canvas.getContext('2d');
+    
+    // Generate demo data for last 7 days
+    const labels = [];
+    const criticalData = [];
+    const warningData = [];
+    const infoData = [];
+    
+    for (let i = 6; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        labels.push(date.toLocaleDateString('en-US', { weekday: 'short' }));
         
-        // Generate demo data for last 7 days
-        const labels = [];
-        const criticalData = [];
-        const warningData = [];
-        const infoData = [];
-        
-        for (let i = 6; i >= 0; i--) {
-            const date = new Date();
-            date.setDate(date.getDate() - i);
-            labels.push(date.toLocaleDateString('en-US', { weekday: 'short' }));
-            
-            criticalData.push(Math.floor(Math.random() * 10));
-            warningData.push(Math.floor(Math.random() * 20) + 10);
-            infoData.push(Math.floor(Math.random() * 15) + 5);
-        }
-        
-        alertTrendsChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [
-                    {
-                        label: 'Critical',
-                        data: criticalData,
-                        borderColor: 'rgb(239, 68, 68)',
-                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                        tension: 0.4
-                    },
-                    {
-                        label: 'Warning',
-                        data: warningData,
-                        borderColor: 'rgb(245, 158, 11)',
-                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                        tension: 0.4
-                    },
-                    {
-                        label: 'Info',
-                        data: infoData,
-                        borderColor: 'rgb(59, 130, 246)',
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                        tension: 0.4
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'bottom'
-                    },
-                    title: {
-                        display: false
-                    }
+        criticalData.push(Math.floor(Math.random() * 10));
+        warningData.push(Math.floor(Math.random() * 20) + 10);
+        infoData.push(Math.floor(Math.random() * 15) + 5);
+    }
+    
+    // Destroy existing chart if it exists
+    if (alertTrendsChart) {
+        alertTrendsChart.destroy();
+    }
+    
+    alertTrendsChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Critical',
+                    data: criticalData,
+                    borderColor: 'rgb(239, 68, 68)',
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    tension: 0.4
                 },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            stepSize: 5
-                        }
+                {
+                    label: 'Warning',
+                    data: warningData,
+                    borderColor: 'rgb(245, 158, 11)',
+                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                    tension: 0.4
+                },
+                {
+                    label: 'Info',
+                    data: infoData,
+                    borderColor: 'rgb(59, 130, 246)',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    tension: 0.4
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                },
+                title: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        stepSize: 5
                     }
                 }
             }
-        });
-    }
+        }
+    });
+    
+    // Fix: Prevent resize observer issues
+    window.addEventListener('resize', function() {
+        if (alertTrendsChart) {
+            // Debounce resize
+            clearTimeout(window.chartResizeTimeout);
+            window.chartResizeTimeout = setTimeout(() => {
+                const container = canvas.parentElement;
+                canvas.width = container.offsetWidth;
+                canvas.height = 400;
+                alertTrendsChart.resize();
+            }, 250);
+        }
+    });
+}
     
     // Global functions
     window.viewAlert = async function(alertId) {
