@@ -183,7 +183,48 @@ const adminApi = {
             console.error('Error retraining model:', error);
             throw error;
         }
-    }
+    },
+
+    async getSystemAlerts(params = {}) {
+        try {
+            const queryString = new URLSearchParams(params).toString();
+            const response = await apiClient.get(`admin/alerts${queryString ? '?' + queryString : ''}`);
+            return response;
+        } catch (error) {
+            console.error('Error fetching system alerts:', error);
+            throw error;
+        }
+    },
+
+    async getSystemAlertStats() {
+        try {
+            const response = await apiClient.get('admin/alerts/stats');
+            return response;
+        } catch (error) {
+            console.error('Error fetching alert statistics:', error);
+            throw error;
+        }
+    },
+
+    async resolveAlert(alertId) {
+        try {
+            const response = await apiClient.put(`admin/alerts/${alertId}/resolve`);
+            return response;
+        } catch (error) {
+            console.error('Error resolving alert:', error);
+            throw error;
+        }
+    },
+
+    async bulkResolveAlerts(alertIds) {
+        try {
+            const response = await apiClient.post('admin/alerts/bulk-resolve', { alert_ids: alertIds });
+            return response;
+        } catch (error) {
+            console.error('Error bulk resolving alerts:', error);
+            throw error;
+        }
+    },
 };
 
 // Make it available globally
