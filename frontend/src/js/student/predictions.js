@@ -1,42 +1,33 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // Elements
+    console.log('Predictions page loading...');
+    
+    // Get elements - with null checks
     const usernameElement = document.getElementById('username');
     const logoutBtn = document.getElementById('logoutBtn');
-    const courseFilter = document.getElementById('courseFilter');
-    const riskFilter = document.getElementById('riskFilter');
-    const searchInput = document.getElementById('searchInput');
-    const applyFiltersBtn = document.getElementById('applyFilters');
-    const clearFiltersBtn = document.getElementById('clearFilters');
-    const generateAllBtn = document.getElementById('generateAll');
-    const exportBtn = document.getElementById('exportBtn');
-    const loadingIndicator = document.getElementById('loadingIndicator');
-    const predictionsContainer = document.getElementById('predictionsContainer');
-    const noPredictions = document.getElementById('noPredictions');
-    const predictionsGrid = document.getElementById('predictionsGrid');
-    const predictionCount = document.getElementById('predictionCount');
     
-    // Summary elements
-    const totalCourses = document.getElementById('totalCourses');
-    const lowRiskCount = document.getElementById('lowRiskCount');
-    const mediumRiskCount = document.getElementById('mediumRiskCount');
-    const highRiskCount = document.getElementById('highRiskCount');
-    
-    // State
     let allPredictions = [];
     let filteredPredictions = [];
+    let coursesList = [];
     
-    // Initialize
+    // Initialize page
     init();
     
-    function init() {
-        // Check authentication
+    async function init() {
+        console.log('Initializing predictions page...');
+        
+        // Check authentication using the correct method
         if (!authApi.isLoggedIn()) {
+            console.log('User not logged in, redirecting...');
             window.location.href = '../login.html';
             return;
         }
         
-        // Check user role
-        if (!authApi.hasRole('student')) {
+        // Check role
+        const userRole = authApi.getUserRole();
+        console.log('User role:', userRole);
+        
+        if (userRole !== 'student') {
+            console.log('User is not a student, redirecting...');
             window.location.href = '../login.html';
             return;
         }
@@ -47,490 +38,703 @@ document.addEventListener('DOMContentLoaded', function() {
             usernameElement.textContent = user.username;
         }
         
-        // Load predictions
-        loadPredictions();
-        
-        // Set up event listeners
-        setupEventListeners();
-    }
-    
-    function setupEventListeners() {
-        // Logout
+        // Set up logout button
         if (logoutBtn) {
             logoutBtn.addEventListener('click', function() {
                 authApi.logout();
             });
         }
         
-        // Filter controls
-        if (applyFiltersBtn) {
-            applyFiltersBtn.addEventListener('click', applyFilters);
-        }
-        
-        if (clearFiltersBtn) {
-            clearFiltersBtn.addEventListener('click', clearFilters);
-        }
-        
-        // Generate predictions button
-        if (generateAllBtn) {
-            generateAllBtn.addEventListener('click', generatePredictions);
-        }
-        
-        // Export functionality
-        if (exportBtn) {
-            exportBtn.addEventListener('click', exportPredictions);
-        }
-        
-        // Search on enter
-        if (searchInput) {
-            searchInput.addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
-                    applyFilters();
-                }
-            });
-        }
+        // Load data
+        await loadCourses();
+        await loadPredictions();
     }
     
-    async function loadPredictions() {
+    async function loadCourses() {
         try {
-            showLoading(true);
+            console.log('Loading courses...');
+            const response = await apiClient.get('student/courses');
+            console.log('Courses response:', response);
             
-            const response = await apiClient.get('student/predictions');
-            console.log('Predictions response:', response);
-            
-            if (response.status === 'success' && response.data) {
-                // Extract predictions from the response structure
-                allPredictions = [];
-                
-                if (response.data.predictions && Array.isArray(response.data.predictions)) {
-                    response.data.predictions.forEach(item => {
-                        if (item.prediction) {
-                            // Add course info to prediction
-                            const prediction = {
-                                ...item.prediction,
-                                course_code: item.course.course_code,
-                                course_name: item.course.course_name,
-                                enrollment_id: item.enrollment_id
-                            };
-                            allPredictions.push(prediction);
-                        }
-                    });
-                }
-                
-                filteredPredictions = [...allPredictions];
-                
-                // Populate course filter
+            if (response.status === 'success' && response.data && response.data.courses) {
+                coursesList = response.data.courses;
                 populateCourseFilter();
-                
-                // Update summary
-                updateSummary();
-                
-                // Display predictions
-                displayPredictions();
-            } else {
-                showNoPredictions();
             }
         } catch (error) {
-            console.error('Error loading predictions:', error);
-            showError('Failed to load predictions. Please try again.');
-        } finally {
-            showLoading(false);
+            console.error('Error loading courses:', error);
         }
     }
     
     function populateCourseFilter() {
-        if (!courseFilter) return;
+        console.log('Populating course filter with', coursesList.length, 'courses');
+        
+        // Try different possible IDs for the course filter
+        const courseFilter = document.getElementById('courseFilter') || 
+                           document.querySelector('select[name="course"]') ||
+                           document.querySelector('.course-filter');
+                           
+        if (!courseFilter) {
+            console.log('Course filter element not found');
+            return;
+        }
         
         courseFilter.innerHTML = '<option value="">All Courses</option>';
         
-        // Get unique courses
-        const courses = new Map();
-        allPredictions.forEach(pred => {
-            if (!courses.has(pred.course_code)) {
-                courses.set(pred.course_code, pred.course_name);
-            }
+        coursesList.forEach(course => {
+            const option = document.createElement('option');
+            option.value = course.course_code;
+            option.textContent = `${course.course_code} - ${course.course_name}`;
+            courseFilter.appendChild(option);
         });
         
-        // Add to filter
-        courses.forEach((name, code) => {
-            const option = document.createElement('option');
-            option.value = code;
-            option.textContent = `${code} - ${name}`;
-            courseFilter.appendChild(option);
+        console.log('Course filter populated');
+    }
+    
+    async function loadPredictions() {
+        try {
+            console.log('Loading predictions...');
+            const response = await apiClient.get('student/predictions');
+            console.log('Predictions response:', response);
+            
+            if (response.status === 'success' && response.data && response.data.predictions) {
+                allPredictions = response.data.predictions;
+                filteredPredictions = [...allPredictions];
+                console.log('Loaded', allPredictions.length, 'predictions');
+                displayPredictions();
+            } else {
+                console.log('No predictions data in response');
+                showNoPredictions();
+            }
+        } catch (error) {
+            console.error('Error loading predictions:', error);
+            showError('Failed to load predictions. Please refresh the page.');
+        }
+    }
+    
+    function displayPredictions() {
+        console.log('Displaying', filteredPredictions.length, 'predictions');
+        
+        const tableBody = document.getElementById('predictionsTableBody');
+        const tableContainer = document.querySelector('.overflow-x-auto');
+        const noPredictionsMessage = document.getElementById('noPredictionsMessage');
+        
+        if (filteredPredictions.length === 0) {
+            // Hide table, show no predictions message
+            if (tableContainer) tableContainer.style.display = 'none';
+            if (noPredictionsMessage) noPredictionsMessage.classList.remove('hidden');
+            updatePredictionCount();
+            return;
+        }
+        
+        // Show table, hide no predictions message
+        if (tableContainer) tableContainer.style.display = 'block';
+        if (noPredictionsMessage) noPredictionsMessage.classList.add('hidden');
+        
+        if (!tableBody) {
+            console.error('Table body element not found');
+            return;
+        }
+        
+        // Clear existing rows
+        tableBody.innerHTML = '';
+        
+        // Add prediction rows
+        filteredPredictions.forEach(prediction => {
+            const row = document.createElement('tr');
+            row.className = 'hover:bg-gray-50 transition-colors';
+            row.innerHTML = createPredictionTableRow(prediction);
+            tableBody.appendChild(row);
+        });
+        
+        // Update count and stats
+        updatePredictionCount();
+    }
+    
+    function findPredictionsContainer() {
+        // Try multiple possible container IDs/classes
+        return document.getElementById('predictionsTableBody') ||
+               document.getElementById('predictionsList') ||
+               document.getElementById('predictionsContainer') ||
+               document.querySelector('.predictions-list') ||
+               document.querySelector('[data-predictions-container]') ||
+               document.querySelector('tbody'); // Last resort - find any tbody
+    }
+    
+    function createPredictionTableRow(prediction) {
+        const riskLevel = getRiskLevel(prediction.predicted_grade);
+        const confidencePercent = Math.round(prediction.confidence_score * 100);
+        
+        return `
+            <td class="px-6 py-4 whitespace-nowrap">
+                <div>
+                    <div class="text-sm font-medium text-gray-900">${prediction.course_code}</div>
+                    <div class="text-sm text-gray-500">${prediction.course_name}</div>
+                </div>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+                ${getGradeBadge(prediction.predicted_grade)}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+                ${getRiskBadge(riskLevel)}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+                <div class="flex items-center">
+                    <span class="text-sm text-gray-600 mr-2">${confidencePercent}%</span>
+                    <div class="w-24 bg-gray-200 rounded-full h-2">
+                        <div class="bg-blue-600 h-2 rounded-full" style="width: ${confidencePercent}%"></div>
+                    </div>
+                </div>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                ${formatDate(prediction.prediction_date)}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                <button onclick="viewPredictionDetails('${prediction.prediction_id}')" 
+                        class="text-blue-600 hover:text-blue-900 transition-colors">
+                    <i class="fas fa-eye mr-1"></i> View Details
+                </button>
+            </td>
+        `;
+    }
+    
+    function createPredictionCard(prediction) {
+        const riskLevel = getRiskLevel(prediction.predicted_grade);
+        const confidencePercent = Math.round(prediction.confidence_score * 100);
+        
+        return `
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <div class="flex justify-between items-start mb-4">
+                    <div>
+                        <h3 class="text-lg font-semibold">${prediction.course_name}</h3>
+                        <p class="text-sm text-gray-600">${prediction.course_code}</p>
+                    </div>
+                    <div class="text-right">
+                        ${getGradeBadge(prediction.predicted_grade)}
+                    </div>
+                </div>
+                <div class="space-y-2">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-gray-600">Risk Level:</span>
+                        ${getRiskBadge(riskLevel)}
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-gray-600">Confidence:</span>
+                        <div class="flex items-center">
+                            <span class="text-sm font-medium mr-2">${confidencePercent}%</span>
+                            <div class="w-24 bg-gray-200 rounded-full h-2">
+                                <div class="bg-blue-600 h-2 rounded-full" style="width: ${confidencePercent}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-gray-600">Prediction Date:</span>
+                        <span class="text-sm">${formatDate(prediction.prediction_date)}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    function getRiskLevel(grade) {
+        if (grade === 'A' || grade === 'B') return 'low';
+        if (grade === 'C') return 'medium';
+        return 'high';
+    }
+    
+    function getGradeBadge(grade) {
+        const colors = {
+            'A': 'bg-green-100 text-green-800',
+            'B': 'bg-blue-100 text-blue-800',
+            'C': 'bg-yellow-100 text-yellow-800',
+            'D': 'bg-orange-100 text-orange-800',
+            'F': 'bg-red-100 text-red-800'
+        };
+        
+        const colorClass = colors[grade] || 'bg-gray-100 text-gray-800';
+        return `<span class="inline-flex px-3 py-1 text-sm font-semibold rounded-full ${colorClass}">${grade}</span>`;
+    }
+    
+    function getRiskBadge(riskLevel) {
+        const badges = {
+            'low': '<span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">Low Risk</span>',
+            'medium': '<span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">Medium Risk</span>',
+            'high': '<span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">High Risk</span>'
+        };
+        return badges[riskLevel] || '';
+    }
+    
+    function formatDate(dateString) {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', { 
+            year: 'numeric', 
+            month: 'short', 
+            day: 'numeric' 
         });
     }
     
-    function updateSummary() {
-        // Count by risk level
-        const riskCounts = {
+    function showNoPredictions() {
+        console.log('Showing no predictions message');
+        
+        const tableContainer = document.querySelector('.overflow-x-auto');
+        const noPredictionsMessage = document.getElementById('noPredictionsMessage');
+        
+        // Hide table
+        if (tableContainer) tableContainer.style.display = 'none';
+        
+        // Show no predictions message
+        if (noPredictionsMessage) noPredictionsMessage.classList.remove('hidden');
+        
+        // Update count
+        updatePredictionCount();
+    }
+    
+    function updatePredictionCount() {
+        // Try to find count element
+        const countElement = document.getElementById('predictionCount') ||
+                           document.querySelector('.prediction-count') ||
+                           document.querySelector('[data-prediction-count]');
+                           
+        if (countElement) {
+            countElement.textContent = `${filteredPredictions.length} prediction${filteredPredictions.length !== 1 ? 's' : ''} found`;
+        }
+        
+        // Update stats if they exist
+        updateStats();
+    }
+    
+    function updateStats() {
+        const stats = {
+            total: filteredPredictions.length,
             low: 0,
             medium: 0,
             high: 0
         };
         
-        filteredPredictions.forEach(pred => {
-            if (riskCounts.hasOwnProperty(pred.risk_level)) {
-                riskCounts[pred.risk_level]++;
-            }
-        });
-        
-        // Update UI
-        if (totalCourses) totalCourses.textContent = filteredPredictions.length;
-        if (lowRiskCount) lowRiskCount.textContent = riskCounts.low;
-        if (mediumRiskCount) mediumRiskCount.textContent = riskCounts.medium;
-        if (highRiskCount) highRiskCount.textContent = riskCounts.high;
-        if (predictionCount) predictionCount.textContent = filteredPredictions.length;
-    }
-    
-    function displayPredictions() {
-        if (filteredPredictions.length === 0) {
-            showNoPredictions();
-            return;
-        }
-        
-        predictionsContainer.classList.remove('hidden');
-        noPredictions.classList.add('hidden');
-        
-        let html = '';
         filteredPredictions.forEach(prediction => {
-            html += createPredictionCard(prediction);
+            const riskLevel = getRiskLevel(prediction.predicted_grade);
+            stats[riskLevel]++;
         });
         
-        predictionsGrid.innerHTML = html;
+        // Try to update stat elements if they exist
+        const totalElement = document.getElementById('totalCourses') || document.querySelector('[data-total-courses]');
+        const lowElement = document.getElementById('lowRiskCount') || document.querySelector('[data-low-risk]');
+        const mediumElement = document.getElementById('mediumRiskCount') || document.querySelector('[data-medium-risk]');
+        const highElement = document.getElementById('highRiskCount') || document.querySelector('[data-high-risk]');
         
-        // Add click handlers for detail view
-        document.querySelectorAll('.view-details-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const predictionId = this.dataset.predictionId;
-                const prediction = allPredictions.find(p => p.prediction_id == predictionId);
-                if (prediction) {
-                    showPredictionDetail(prediction);
-                }
-            });
-        });
+        if (totalElement) totalElement.textContent = stats.total;
+        if (lowElement) lowElement.textContent = stats.low;
+        if (mediumElement) mediumElement.textContent = stats.medium;
+        if (highElement) highElement.textContent = stats.high;
     }
     
-    function createPredictionCard(prediction) {
-        const riskColors = {
-            'low': 'bg-green-100 text-green-800 border-green-200',
-            'medium': 'bg-yellow-100 text-yellow-800 border-yellow-200',
-            'high': 'bg-red-100 text-red-800 border-red-200'
-        };
+    function showError(message) {
+        console.error(message);
+        const container = findPredictionsContainer();
         
-        const gradeColors = {
-            'Pass': 'text-green-600',
-            'Fail': 'text-red-600',
-            'A': 'text-green-600',
-            'B': 'text-blue-600',
-            'C': 'text-yellow-600',
-            'D': 'text-orange-600',
-            'F': 'text-red-600'
-        };
-        
-        const riskBorderColors = {
-            'low': 'border-l-green-500',
-            'medium': 'border-l-yellow-500',
-            'high': 'border-l-red-500'
-        };
-        
-        const confidencePercent = Math.round(prediction.confidence_score * 100);
-        const riskClass = riskColors[prediction.risk_level] || riskColors['medium'];
-        const gradeColor = gradeColors[prediction.predicted_grade] || 'text-gray-600';
-        const borderColor = riskBorderColors[prediction.risk_level] || 'border-l-gray-500';
-        
-        return `
-            <div class="prediction-card bg-white rounded-lg shadow-md hover:shadow-lg border-l-4 ${borderColor}">
-                <div class="p-6">
-                    <div class="mb-4">
-                        <h3 class="text-lg font-semibold text-gray-900">${prediction.course_name}</h3>
-                        <p class="text-sm text-gray-600">${prediction.course_code}</p>
-                    </div>
-                    
-                    <div class="space-y-4">
-                        <div class="flex justify-between items-center">
-                            <span class="text-sm text-gray-500">Predicted Grade</span>
-                            <span class="text-2xl font-bold ${gradeColor}">${prediction.predicted_grade}</span>
-                        </div>
-                        
-                        <div>
-                            <div class="flex justify-between items-center mb-1">
-                                <span class="text-sm text-gray-500">Confidence</span>
-                                <span class="text-sm font-medium">${confidencePercent}%</span>
-                            </div>
-                            <div class="w-full bg-gray-200 rounded-full h-2">
-                                <div class="bg-blue-600 h-2 rounded-full transition-all duration-300" 
-                                     style="width: ${confidencePercent}%"></div>
-                            </div>
-                        </div>
-                        
-                        <div class="flex justify-between items-center">
-                            <span class="text-sm text-gray-500">Risk Level</span>
-                            <span class="px-3 py-1 rounded-full text-xs font-medium border ${riskClass}">
-                                ${prediction.risk_level.toUpperCase()}
-                            </span>
-                        </div>
-                        
-                        <div class="text-xs text-gray-400 border-t pt-3">
-                            <i class="fas fa-clock mr-1"></i>
-                            Updated: ${new Date(prediction.prediction_date).toLocaleDateString()}
-                        </div>
-                        
-                        <button class="view-details-btn w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white text-sm py-2 px-4 rounded transition-colors"
-                                data-prediction-id="${prediction.prediction_id}">
-                            <i class="fas fa-info-circle mr-1"></i> View Details
-                        </button>
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-    
-    function showPredictionDetail(prediction) {
-        // Get explanation if available
-        let explanationHtml = '';
-        if (prediction.explanation) {
-            explanationHtml = `
-                <div class="mt-6 border-t pt-4">
-                    <h4 class="font-semibold mb-2">Analysis:</h4>
-                    <p class="text-gray-600">${prediction.explanation.explanation || 'Based on your current performance metrics.'}</p>
-                    ${prediction.explanation.top_factors && prediction.explanation.top_factors.length > 0 ? `
-                        <div class="mt-4">
-                            <h5 class="font-medium mb-2">Key Factors:</h5>
-                            <ul class="space-y-2">
-                                ${prediction.explanation.top_factors.slice(0, 3).map(factor => `
-                                    <li class="flex justify-between items-center bg-gray-50 p-2 rounded">
-                                        <span class="text-sm">${factor.name.replace(/_/g, ' ')}</span>
-                                        <span class="text-sm font-medium">${(factor.importance * 100).toFixed(1)}% impact</span>
-                                    </li>
-                                `).join('')}
-                            </ul>
-                        </div>
-                    ` : ''}
+        if (container) {
+            container.innerHTML = `
+                <div class="text-center py-8">
+                    <p class="text-red-500">${message}</p>
                 </div>
             `;
         }
-        
-        // Show modal with details
-        const modalHtml = `
-            <div class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 p-4" id="detailModal">
-                <div class="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-                    <div class="flex justify-between items-start mb-4">
-                        <h3 class="text-xl font-bold text-gray-900">${prediction.course_name}</h3>
-                        <button onclick="document.getElementById('detailModal').remove()" 
-                                class="text-gray-400 hover:text-gray-600">
-                            <i class="fas fa-times text-xl"></i>
-                        </button>
-                    </div>
-                    
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                        <div class="bg-gray-50 p-4 rounded">
-                            <div class="text-sm text-gray-500 mb-1">Course Code</div>
-                            <div class="font-medium">${prediction.course_code}</div>
-                        </div>
-                        <div class="bg-gray-50 p-4 rounded">
-                            <div class="text-sm text-gray-500 mb-1">Enrollment ID</div>
-                            <div class="font-medium">#${prediction.enrollment_id}</div>
-                        </div>
-                    </div>
-                    
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div class="text-center p-4 bg-blue-50 rounded">
-                            <div class="text-3xl font-bold ${prediction.predicted_grade === 'Pass' ? 'text-green-600' : 'text-red-600'}">
-                                ${prediction.predicted_grade}
-                            </div>
-                            <div class="text-sm text-gray-600 mt-1">Predicted Grade</div>
-                        </div>
-                        <div class="text-center p-4 bg-purple-50 rounded">
-                            <div class="text-3xl font-bold text-purple-600">
-                                ${Math.round(prediction.confidence_score * 100)}%
-                            </div>
-                            <div class="text-sm text-gray-600 mt-1">Confidence</div>
-                        </div>
-                        <div class="text-center p-4 bg-${prediction.risk_level === 'low' ? 'green' : prediction.risk_level === 'medium' ? 'yellow' : 'red'}-50 rounded">
-                            <div class="text-3xl font-bold text-${prediction.risk_level === 'low' ? 'green' : prediction.risk_level === 'medium' ? 'yellow' : 'red'}-600">
-                                ${prediction.risk_level.toUpperCase()}
-                            </div>
-                            <div class="text-sm text-gray-600 mt-1">Risk Level</div>
-                        </div>
-                    </div>
-                    
-                    <div class="mt-4 text-sm text-gray-500">
-                        <i class="fas fa-calendar-alt mr-2"></i>
-                        Last Updated: ${new Date(prediction.prediction_date).toLocaleString()}
-                    </div>
-                    
-                    ${explanationHtml}
-                    
-                    <div class="mt-6 flex space-x-2">
-                        <button onclick="document.getElementById('detailModal').remove()" 
-                                class="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded transition-colors">
-                            Close
-                        </button>
-                        <button onclick="generateSinglePrediction('${prediction.enrollment_id}')" 
-                                class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded transition-colors">
-                            <i class="fas fa-sync-alt mr-1"></i> Refresh Prediction
-                        </button>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
     }
     
-    function applyFilters() {
-        const courseCode = courseFilter ? courseFilter.value : '';
-        const riskLevel = riskFilter ? riskFilter.value : '';
-        const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
+    function exportToCSV() {
+        console.log('Exporting to CSV...');
         
-        filteredPredictions = allPredictions.filter(prediction => {
-            const matchesCourse = !courseCode || prediction.course_code === courseCode;
-            const matchesRisk = !riskLevel || prediction.risk_level === riskLevel;
-            const matchesSearch = !searchTerm || 
-                prediction.course_name.toLowerCase().includes(searchTerm) ||
-                prediction.course_code.toLowerCase().includes(searchTerm);
-            
-            return matchesCourse && matchesRisk && matchesSearch;
-        });
-        
-        updateSummary();
-        displayPredictions();
-    }
-    
-    function clearFilters() {
-        if (courseFilter) courseFilter.value = '';
-        if (riskFilter) riskFilter.value = '';
-        if (searchInput) searchInput.value = '';
-        filteredPredictions = [...allPredictions];
-        updateSummary();
-        displayPredictions();
-    }
-    
-    async function generatePredictions() {
-        if (!confirm('Generate new predictions for all your courses? This may take a moment.')) {
-            return;
-        }
-        
-        try {
-            showLoading(true);
-            
-            // For each enrollment, generate a prediction
-            const promises = allPredictions.map(pred => 
-                apiClient.post(`prediction/student/${pred.enrollment_id}/generate`)
-            );
-            
-            const results = await Promise.allSettled(promises);
-            
-            // Count successes
-            const successful = results.filter(r => r.status === 'fulfilled').length;
-            const failed = results.filter(r => r.status === 'rejected').length;
-            
-            // Reload predictions
-            await loadPredictions();
-            
-            // Show result
-            if (failed === 0) {
-                alert(`All ${successful} predictions updated successfully!`);
-            } else {
-                alert(`Updated ${successful} predictions. ${failed} failed to update.`);
-            }
-        } catch (error) {
-            console.error('Error generating predictions:', error);
-            alert('Failed to generate predictions. Please try again.');
-        } finally {
-            showLoading(false);
-        }
-    }
-    
-    async function generateSinglePrediction(enrollmentId) {
-        try {
-            // Close modal first
-            const modal = document.getElementById('detailModal');
-            if (modal) modal.remove();
-            
-            showLoading(true);
-            
-            await apiClient.post(`prediction/student/${enrollmentId}/generate`);
-            
-            // Reload all predictions
-            await loadPredictions();
-            
-            // Find and show the updated prediction
-            const updatedPrediction = allPredictions.find(p => p.enrollment_id == enrollmentId);
-            if (updatedPrediction) {
-                showPredictionDetail(updatedPrediction);
-            }
-        } catch (error) {
-            console.error('Error generating prediction:', error);
-            alert('Failed to update prediction. Please try again.');
-        } finally {
-            showLoading(false);
-        }
-    }
-    
-    function exportPredictions() {
         if (filteredPredictions.length === 0) {
             alert('No predictions to export');
             return;
         }
         
         // Create CSV content
-        const headers = ['Course Code', 'Course Name', 'Predicted Grade', 'Confidence (%)', 'Risk Level', 'Last Updated'];
-        const rows = filteredPredictions.map(p => [
-            p.course_code,
-            p.course_name,
-            p.predicted_grade,
-            Math.round(p.confidence_score * 100),
-            p.risk_level,
-            new Date(p.prediction_date).toLocaleDateString()
-        ]);
+        let csv = 'Course Code,Course Name,Predicted Grade,Risk Level,Confidence,Prediction Date\n';
         
-        let csvContent = headers.join(',') + '\n';
-        rows.forEach(row => {
-            csvContent += row.map(cell => `"${cell}"`).join(',') + '\n';
+        filteredPredictions.forEach(prediction => {
+            const riskLevel = getRiskLevel(prediction.predicted_grade);
+            const confidencePercent = Math.round(prediction.confidence_score * 100);
+            const date = formatDate(prediction.prediction_date);
+            
+            // Escape quotes in course name
+            const courseName = prediction.course_name.replace(/"/g, '""');
+            
+            csv += `"${prediction.course_code}","${courseName}","${prediction.predicted_grade}","${riskLevel}","${confidencePercent}%","${date}"\n`;
         });
         
-        // Download file
-        const blob = new Blob([csvContent], { type: 'text/csv' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `grade_predictions_${new Date().toISOString().split('T')[0]}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
+        // Create blob and download
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        
+        link.setAttribute('href', url);
+        link.setAttribute('download', `grade_predictions_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        console.log('CSV export completed');
     }
     
-    function showLoading(show) {
-        if (show) {
-            loadingIndicator.classList.remove('hidden');
-            predictionsContainer.classList.add('hidden');
-            noPredictions.classList.add('hidden');
+    // Add the viewPredictionDetails function to window
+    window.viewPredictionDetails = function(predictionId) {
+        console.log('View details for prediction:', predictionId);
+        
+        // Find the prediction
+        const prediction = allPredictions.find(p => p.prediction_id == predictionId);
+        
+        if (!prediction) {
+            alert('Prediction not found');
+            return;
+        }
+        
+        // Show modal if it exists, otherwise use alert
+        const modal = document.getElementById('predictionModal');
+        if (modal) {
+            showPredictionModal(prediction);
         } else {
-            loadingIndicator.classList.add('hidden');
+            // Fallback to alert if modal doesn't exist
+            showPredictionAlert(prediction);
+        }
+    };
+    
+    function showPredictionModal(prediction) {
+        const riskLevel = getRiskLevel(prediction.predicted_grade);
+        const confidencePercent = Math.round(prediction.confidence_score * 100);
+        
+        // Update modal content
+        document.getElementById('modalCourseCode').textContent = prediction.course_code;
+        document.getElementById('modalCourseName').textContent = prediction.course_name;
+        document.getElementById('modalGrade').textContent = prediction.predicted_grade;
+        document.getElementById('modalGrade').className = `text-3xl font-bold ${getGradeColor(prediction.predicted_grade)}`;
+        document.getElementById('modalRisk').textContent = riskLevel.toUpperCase();
+        document.getElementById('modalRisk').className = `text-xl font-semibold ${getRiskColor(riskLevel)}`;
+        document.getElementById('modalConfidence').textContent = confidencePercent + '%';
+        
+        // Update recommendations
+        const recommendations = getRecommendationsList(prediction.predicted_grade, riskLevel);
+        const recommendationsList = document.getElementById('modalRecommendations');
+        recommendationsList.innerHTML = recommendations.map(rec => `<li>${rec}</li>`).join('');
+        
+        // Store current prediction for download
+        window.currentPrediction = prediction;
+        
+        // Show modal
+        document.getElementById('predictionModal').classList.remove('hidden');
+    }
+    
+    function showPredictionAlert(prediction) {
+        const riskLevel = getRiskLevel(prediction.predicted_grade);
+        const confidencePercent = Math.round(prediction.confidence_score * 100);
+        
+        const details = `
+PREDICTION DETAILS
+==================
+Course: ${prediction.course_code} - ${prediction.course_name}
+Predicted Grade: ${prediction.predicted_grade}
+Risk Level: ${riskLevel.toUpperCase()}
+Confidence: ${confidencePercent}%
+Prediction Date: ${formatDate(prediction.prediction_date)}
+
+RECOMMENDATIONS:
+${getRecommendations(prediction.predicted_grade, riskLevel)}
+        `;
+        
+        alert(details);
+    }
+    
+    window.closePredictionModal = function() {
+        const modal = document.getElementById('predictionModal');
+        if (modal) {
+            modal.classList.add('hidden');
+        }
+    };
+    
+    window.downloadPredictionReport = function() {
+        if (!window.currentPrediction) return;
+        
+        const prediction = window.currentPrediction;
+        const riskLevel = getRiskLevel(prediction.predicted_grade);
+        const confidencePercent = Math.round(prediction.confidence_score * 100);
+        
+        const report = `GRADE PREDICTION REPORT
+========================
+Generated: ${new Date().toLocaleString()}
+
+COURSE INFORMATION
+------------------
+Course Code: ${prediction.course_code}
+Course Name: ${prediction.course_name}
+
+PREDICTION RESULTS
+------------------
+Predicted Grade: ${prediction.predicted_grade}
+Risk Level: ${riskLevel.toUpperCase()}
+Confidence: ${confidencePercent}%
+Prediction Date: ${formatDate(prediction.prediction_date)}
+
+RECOMMENDATIONS
+---------------
+${getRecommendations(prediction.predicted_grade, riskLevel)}
+
+NEXT STEPS
+----------
+1. Review the recommendations above
+2. Meet with your instructor if needed
+3. Utilize available campus resources
+4. Monitor your progress regularly
+
+This report was generated by the University Grade Prediction System.
+For questions, please contact your academic advisor.`;
+        
+        const blob = new Blob([report], { type: 'text/plain;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `prediction_report_${prediction.course_code}_${new Date().toISOString().split('T')[0]}.txt`;
+        link.click();
+    };
+    
+    function getGradeColor(grade) {
+        const colors = {
+            'A': 'text-green-600',
+            'B': 'text-blue-600',
+            'C': 'text-yellow-600',
+            'D': 'text-orange-600',
+            'F': 'text-red-600'
+        };
+        return colors[grade] || 'text-gray-600';
+    }
+    
+    function getRiskColor(riskLevel) {
+        const colors = {
+            'low': 'text-green-600',
+            'medium': 'text-yellow-600',
+            'high': 'text-red-600'
+        };
+        return colors[riskLevel] || 'text-gray-600';
+    }
+    
+    function getRecommendationsList(grade, riskLevel) {
+        if (riskLevel === 'high') {
+            return [
+                'Schedule an immediate meeting with your instructor',
+                'Visit the academic support center for tutoring',
+                'Review and complete all missing assignments',
+                'Create a detailed study schedule',
+                'Consider forming or joining a study group',
+                'Speak with your academic advisor about options'
+            ];
+        } else if (riskLevel === 'medium') {
+            return [
+                'Increase your study time by 1-2 hours per week',
+                'Attend all remaining classes without exception',
+                'Visit instructor during office hours for clarification',
+                'Review class notes daily',
+                'Complete all practice problems and exercises',
+                'Seek help early if you struggle with any topics'
+            ];
+        } else {
+            return [
+                'Maintain your current study habits',
+                'Continue regular class attendance',
+                'Stay engaged with course material',
+                'Help classmates who may be struggling',
+                'Consider advanced topics or extra credit',
+                'Prepare thoroughly for final exams'
+            ];
         }
     }
     
-    function showNoPredictions() {
-        predictionsContainer.classList.add('hidden');
-        noPredictions.classList.remove('hidden');
-        updateSummary();
+    function getRecommendations(grade, riskLevel) {
+        if (riskLevel === 'high') {
+            return `• Immediate intervention recommended
+• Schedule meeting with instructor
+• Consider tutoring services
+• Review study habits and time management
+• Check for missing assignments`;
+        } else if (riskLevel === 'medium') {
+            return `• Monitor progress closely
+• Increase study time
+• Attend all classes
+• Seek help during office hours
+• Form study groups with classmates`;
+        } else {
+            return `• Continue current study habits
+• Maintain attendance
+• Stay engaged in class
+• Help other students if possible
+• Prepare for advanced topics`;
+        }
     }
     
-    function showError(message) {
-        predictionsGrid.innerHTML = `
-            <div class="col-span-full text-center py-8">
-                <div class="text-red-500 text-6xl mb-4">
-                    <i class="fas fa-exclamation-triangle"></i>
-                </div>
-                <p class="text-red-600 text-lg">${message}</p>
-                <button onclick="location.reload()" class="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">
-                    Try Again
-                </button>
-            </div>
-        `;
-        predictionsContainer.classList.remove('hidden');
-        noPredictions.classList.add('hidden');
+    function handleFilterSubmit() {
+        console.log('Applying filters...');
+        
+        const courseFilter = document.getElementById('courseFilter');
+        const riskFilter = document.getElementById('riskFilter');
+        const searchInput = document.getElementById('searchInput');
+        
+        const courseValue = courseFilter ? courseFilter.value : '';
+        const riskValue = riskFilter ? riskFilter.value : '';
+        const searchValue = searchInput ? searchInput.value.toLowerCase().trim() : '';
+        
+        console.log('Filter values:', { courseValue, riskValue, searchValue });
+        
+        filteredPredictions = allPredictions.filter(prediction => {
+            // Course filter
+            if (courseValue && prediction.course_code !== courseValue) {
+                return false;
+            }
+            
+            // Risk level filter
+            const riskLevel = getRiskLevel(prediction.predicted_grade);
+            if (riskValue && riskLevel !== riskValue) {
+                return false;
+            }
+            
+            // Search filter
+            if (searchValue) {
+                const searchText = `${prediction.course_code} ${prediction.course_name}`.toLowerCase();
+                if (!searchText.includes(searchValue)) {
+                    return false;
+                }
+            }
+            
+            return true;
+        });
+        
+        console.log('Filtered predictions:', filteredPredictions.length);
+        displayPredictions();
     }
+    
+    function clearFilters() {
+        console.log('Clearing filters...');
+        
+        const courseFilter = document.getElementById('courseFilter');
+        const riskFilter = document.getElementById('riskFilter');
+        const searchInput = document.getElementById('searchInput');
+        
+        if (courseFilter) courseFilter.value = '';
+        if (riskFilter) riskFilter.value = '';
+        if (searchInput) searchInput.value = '';
+        
+        filteredPredictions = [...allPredictions];
+        displayPredictions();
+    }
+    
+    async function generateNewPredictions() {
+        console.log('Generating new predictions...');
+        
+        if (!confirm('Generate new predictions for all your courses? This may take a moment.')) {
+            return;
+        }
+        
+        try {
+            // Show loading state
+            const generateBtn = document.getElementById('generateNewBtn');
+            if (generateBtn) {
+                generateBtn.disabled = true;
+                generateBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Generating...';
+            }
+            
+            // Make API call to generate predictions
+            const response = await apiClient.post('student/predictions/generate', {});
+            console.log('Generate predictions response:', response);
+            
+            if (response.status === 'success') {
+                // Show success message
+                const successCount = response.data.success_count || 0;
+                const errorCount = response.data.error_count || 0;
+                
+                let message = `Generated ${successCount} predictions successfully`;
+                if (errorCount > 0) {
+                    message += ` (${errorCount} failed)`;
+                }
+                
+                alert(message);
+                
+                // Reload predictions to show the new ones
+                await loadPredictions();
+            } else {
+                throw new Error(response.message || 'Failed to generate predictions');
+            }
+            
+        } catch (error) {
+            console.error('Error generating predictions:', error);
+            alert('Failed to generate predictions. Please try again.\n\nError: ' + (error.message || 'Unknown error'));
+        } finally {
+            // Reset button state
+            const generateBtn = document.getElementById('generateNewBtn');
+            if (generateBtn) {
+                generateBtn.disabled = false;
+                generateBtn.innerHTML = '<i class="fas fa-sync-alt mr-2"></i> Generate New Predictions';
+            }
+        }
+    }
+    
+    // Set up event listeners for buttons and filters
+    function setupEventListeners() {
+        console.log('Setting up event listeners...');
+        
+        // Generate New Predictions button
+        const generateNewBtn = document.getElementById('generateNewBtn');
+        if (generateNewBtn) {
+            generateNewBtn.addEventListener('click', generateNewPredictions);
+            console.log('Generate button listener attached');
+        }
+        
+        // Export button
+        const exportBtn = document.getElementById('exportBtn');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', exportToCSV);
+            console.log('Export button listener attached');
+        }
+        
+        // Filter buttons
+        const applyBtn = document.getElementById('applyBtn');
+        if (applyBtn) {
+            applyBtn.addEventListener('click', handleFilterSubmit);
+            console.log('Apply button listener attached');
+        }
+        
+        const clearBtn = document.getElementById('clearBtn');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', clearFilters);
+            console.log('Clear button listener attached');
+        }
+        
+        // Filter dropdowns (auto-apply on change)
+        const courseFilter = document.getElementById('courseFilter');
+        if (courseFilter) {
+            courseFilter.addEventListener('change', handleFilterSubmit);
+        }
+        
+        const riskFilter = document.getElementById('riskFilter');
+        if (riskFilter) {
+            riskFilter.addEventListener('change', handleFilterSubmit);
+        }
+        
+        // Search input (apply on Enter)
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput) {
+            searchInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    handleFilterSubmit();
+                }
+            });
+        }
+        
+        // Refresh button
+        const refreshBtn = document.getElementById('refreshBtn');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', function() {
+                window.location.reload();
+            });
+        }
+    }
+    
+    // Call setupEventListeners after the page loads
+    setupEventListeners();
 });

@@ -330,3 +330,87 @@ class FeatureCalculator:
         except FileNotFoundError:
             logger.warning("Feature importance file not found")
             return {}
+        
+        
+    def debug_feature_calculation(self, enrollment_id: int):
+        """Debug method to trace feature calculation"""
+        logger.info(f"\n{'='*60}")
+        logger.info(f"DEBUG: Feature Calculation for Enrollment {enrollment_id}")
+        logger.info(f"{'='*60}")
+        
+        try:
+            # Get enrollment details
+            enrollment = Enrollment.query.get(enrollment_id)
+            if not enrollment:
+                logger.error(f"Enrollment {enrollment_id} not found")
+                return
+            
+            logger.info(f"Student: {enrollment.student_id}")
+            logger.info(f"Course: {enrollment.offering.course.course_code}")
+            
+            # Check data availability
+            as_of_date = datetime.now()
+            
+            # Check attendance data
+            attendance_count = Attendance.query.filter_by(enrollment_id=enrollment_id).count()
+            logger.info(f"\nAttendance Records: {attendance_count}")
+            
+            # Check LMS data
+            lms_sessions = LMSSession.query.filter_by(enrollment_id=enrollment_id).count()
+            logger.info(f"LMS Sessions: {lms_sessions}")
+            
+            # Check assessments
+            submissions = AssessmentSubmission.query.filter_by(enrollment_id=enrollment_id).count()
+            logger.info(f"Assessment Submissions: {submissions}")
+            
+            # Calculate features and log each step
+            logger.info("\nCalculating features...")
+            
+            # Convert to VLE format
+            vle_data = self._convert_to_vle_format(enrollment_id, as_of_date)
+            logger.info(f"VLE records created: {len(vle_data)}")
+            
+            if vle_data:
+                logger.info(f"Sample VLE record: {vle_data[0]}")
+            
+            # Calculate activity features
+            activity_features = self._calculate_activity_features(vle_data)
+            logger.info(f"\nActivity Features:")
+            for key, value in activity_features.items():
+                logger.info(f"  {key}: {value}")
+            
+            # Calculate assessment features
+            assessment_features = self._calculate_assessment_features(enrollment_id, as_of_date)
+            logger.info(f"\nAssessment Features:")
+            for key, value in assessment_features.items():
+                logger.info(f"  {key}: {value}")
+            
+            # Calculate demographic features
+            demographic_features = self._calculate_demographic_features(enrollment)
+            logger.info(f"\nDemographic Features:")
+            for key, value in demographic_features.items():
+                logger.info(f"  {key}: {value}")
+            
+            # Combine all features
+            all_features = {}
+            all_features.update(activity_features)
+            all_features.update(assessment_features)
+            all_features.update(demographic_features)
+            
+            # Order features
+            ordered_features = self._validate_and_order_features(all_features)
+            
+            logger.info(f"\nFinal Feature Vector Shape: {ordered_features.shape}")
+            logger.info(f"Non-zero features: {np.count_nonzero(ordered_features)}")
+            logger.info(f"Feature Statistics:")
+            logger.info(f"  Mean: {np.mean(ordered_features):.4f}")
+            logger.info(f"  Std: {np.std(ordered_features):.4f}")
+            logger.info(f"  Min: {np.min(ordered_features):.4f}")
+            logger.info(f"  Max: {np.max(ordered_features):.4f}")
+            
+            logger.info(f"{'='*60}\n")
+            
+        except Exception as e:
+            logger.error(f"Error in debug feature calculation: {str(e)}")
+            import traceback
+            traceback.print_exc()

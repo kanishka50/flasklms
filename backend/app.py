@@ -99,6 +99,7 @@ def register_blueprints(app):
         from backend.api.prediction import prediction_bp
         from backend.api.common import common_bp
         
+        
         # Register blueprints with URL prefixes
         app.register_blueprint(auth_bp, url_prefix='/api/auth')
         app.register_blueprint(student_bp, url_prefix='/api/student')

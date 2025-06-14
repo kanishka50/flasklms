@@ -990,5 +990,89 @@ def get_student_enrollments():
     except Exception as e:
         logger.error(f"Error getting enrollments: {str(e)}")
         return error_response(f"Error retrieving enrollments: {str(e)}")
+    
+@student_bp.route('/predictions/generate', methods=['POST'])
+@jwt_required()
+@student_required
+def generate_student_predictions():
+    """Generate new predictions for the current student"""
+    try:
+        # Get current user
+        user_id = get_jwt_identity()
+        user = get_user_by_id(user_id)
+        
+        if not user or not user.student:
+            return jsonify({
+                'status': 'error',
+                'message': 'Student profile not found'
+            }), 404
+        
+        student_id = user.student.student_id
+        
+        # Import prediction service
+        from backend.services.prediction_service import PredictionService
+        prediction_service = PredictionService()
+        
+        # Get all active enrollments
+        enrollments = Enrollment.query.filter(
+            Enrollment.student_id == student_id,
+            Enrollment.enrollment_status == 'enrolled'
+        ).all()
+        
+        if not enrollments:
+            return jsonify({
+                'status': 'error',
+                'message': 'No active enrollments found'
+            }), 404
+        
+        results = []
+        success_count = 0
+        
+        for enrollment in enrollments:
+            try:
+                # Generate prediction for this enrollment
+                prediction = prediction_service.generate_prediction(
+                    enrollment.enrollment_id,
+                    save=True
+                )
+                
+                # Add course info
+                prediction['course_code'] = enrollment.offering.course.course_code
+                prediction['course_name'] = enrollment.offering.course.course_name
+                
+                results.append({
+                    'enrollment_id': enrollment.enrollment_id,
+                    'course_code': enrollment.offering.course.course_code,
+                    'status': 'success',
+                    'prediction': prediction
+                })
+                success_count += 1
+                
+            except Exception as e:
+                logger.error(f"Failed to generate prediction for enrollment {enrollment.enrollment_id}: {str(e)}")
+                results.append({
+                    'enrollment_id': enrollment.enrollment_id,
+                    'course_code': enrollment.offering.course.course_code,
+                    'status': 'error',
+                    'error': str(e)
+                })
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Generated {success_count} predictions successfully',
+            'data': {
+                'results': results,
+                'total_processed': len(results),
+                'success_count': success_count,
+                'error_count': len(results) - success_count
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error generating predictions: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to generate predictions: {str(e)}'
+        }), 500
 
     
