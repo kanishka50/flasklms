@@ -8,10 +8,13 @@ from werkzeug.security import generate_password_hash
 from sqlalchemy import or_, func
 import logging
 from datetime import datetime, timedelta
+from backend.services.alert_service import AlertService
 
 logger = logging.getLogger('admin')
 
 admin_bp = Blueprint('admin', __name__)
+
+alert_service = AlertService()
 
 # Test endpoint
 @admin_bp.route('/test', methods=['GET'])
@@ -674,176 +677,87 @@ def get_system_alerts():
         status = request.args.get('status', None)
         search = request.args.get('search', None)
         
-        # For demo purposes, return mock data if Alert table doesn't exist
-        try:
-            # Build query
-            query = Alert.query
-            
-            # Apply filters
-            if severity:
-                query = query.filter(Alert.severity == severity)
-            if status:
-                if status == 'active':
-                    query = query.filter(Alert.is_resolved == False)
-                elif status == 'resolved':
-                    query = query.filter(Alert.is_resolved == True)
-            if search:
-                query = query.filter(
-                    db.or_(
-                        Alert.message.ilike(f'%{search}%'),
-                        Alert.type.ilike(f'%{search}%') if hasattr(Alert, 'type') else Alert.alert_type.ilike(f'%{search}%')
-                    )
+        # Build query with proper joins
+        query = db.session.query(Alert).join(
+            Enrollment, Alert.enrollment_id == Enrollment.enrollment_id
+        ).join(
+            Student, Enrollment.student_id == Student.student_id
+        ).join(
+            User, Student.user_id == User.user_id
+        ).join(
+            CourseOffering, Enrollment.offering_id == CourseOffering.offering_id
+        ).join(
+            Course, CourseOffering.course_id == Course.course_id
+        ).join(
+            AlertType, Alert.type_id == AlertType.type_id
+        )
+        
+        # Apply filters
+        if severity:
+            query = query.filter(Alert.severity == severity)
+        if status:
+            if status == 'active':
+                query = query.filter(Alert.is_resolved == False)
+            elif status == 'resolved':
+                query = query.filter(Alert.is_resolved == True)
+        if search:
+            query = query.filter(
+                or_(
+                    Alert.alert_message.ilike(f'%{search}%'),
+                    AlertType.type_name.ilike(f'%{search}%')
                 )
-            
-            # Order by created date (newest first)
-            if hasattr(Alert, 'created_at'):
-                query = query.order_by(desc(Alert.created_at))
-            elif hasattr(Alert, 'triggered_date'):
-                query = query.order_by(desc(Alert.triggered_date))
-            
-            # Paginate
-            pagination = query.paginate(page=page, per_page=limit, error_out=False)
-            
-            # Format alerts
-            alerts = []
-            for alert in pagination.items:
-                alert_data = {
-                    'id': alert.id if hasattr(alert, 'id') else alert.alert_id,
-                    'alert_id': alert.alert_id if hasattr(alert, 'alert_id') else alert.id,
-                    'alert_type': alert.alert_type if hasattr(alert, 'alert_type') else alert.type,
-                    'type': alert.type if hasattr(alert, 'type') else alert.alert_type,
-                    'message': alert.message,
-                    'severity': alert.severity,
-                    'status': 'resolved' if alert.is_resolved else 'active',
-                    'is_resolved': alert.is_resolved if hasattr(alert, 'is_resolved') else False,
-                    'is_read': alert.is_read if hasattr(alert, 'is_read') else False,
-                    'created_at': alert.created_at.isoformat() if hasattr(alert, 'created_at') and alert.created_at else None,
-                    'triggered_date': alert.triggered_date.isoformat() if hasattr(alert, 'triggered_date') and alert.triggered_date else None,
-                    'resolved_at': alert.resolved_at.isoformat() if hasattr(alert, 'resolved_at') and alert.resolved_at else None,
-                    'user_id': alert.user_id if hasattr(alert, 'user_id') else None,
-                    'student_id': alert.student_id if hasattr(alert, 'student_id') else None,
-                    'course_id': alert.course_id if hasattr(alert, 'course_id') else None
-                }
-                
-                # Add student name if available
-                if hasattr(alert, 'student') and alert.student:
-                    alert_data['student_name'] = f"{alert.student.first_name} {alert.student.last_name}"
-                elif alert.student_id:
-                    try:
-                        student = Student.query.filter_by(student_id=alert.student_id).first()
-                        if student:
-                            alert_data['student_name'] = f"{student.first_name} {student.last_name}"
-                    except:
-                        alert_data['student_name'] = 'Unknown Student'
-                
-                # Add course name if available
-                if hasattr(alert, 'course') and alert.course:
-                    alert_data['course_name'] = f"{alert.course.course_code} - {alert.course.course_name}"
-                elif alert.course_id:
-                    try:
-                        course = Course.query.get(alert.course_id)
-                        if course:
-                            alert_data['course_name'] = f"{course.course_code} - {course.course_name}"
-                    except:
-                        alert_data['course_name'] = 'Unknown Course'
-                
-                alerts.append(alert_data)
-            
-            return paginated_response(
-                data=alerts,
-                page=page,
-                per_page=limit,
-                total=pagination.total,
-                message='Alerts retrieved successfully'
             )
+        
+        # Order by triggered date (newest first)
+        query = query.order_by(desc(Alert.triggered_date))
+        
+        # Paginate
+        pagination = query.paginate(page=page, per_page=limit, error_out=False)
+        
+        # Format alerts
+        alerts = []
+        for alert in pagination.items:
+            # Get related data through joins
+            enrollment = alert.enrollment
+            student = enrollment.student
+            user = student.user
+            course_offering = enrollment.offering
+            course = course_offering.course
+            alert_type = alert.alert_type
             
-        except Exception as e:
-            logger.warning(f"Alert table might not exist or has different structure: {str(e)}")
+            alert_data = {
+                'id': alert.alert_id,
+                'alert_id': alert.alert_id,
+                'alert_type': alert_type.type_name,
+                'type': alert_type.type_name,
+                'message': alert.alert_message,
+                'severity': alert.severity,
+                'status': 'resolved' if alert.is_resolved else 'active',
+                'is_resolved': alert.is_resolved,
+                'is_read': alert.is_read,
+                'triggered_date': alert.triggered_date.isoformat() if alert.triggered_date else None,
+                'created_at': alert.triggered_date.isoformat() if alert.triggered_date else None,
+                'resolved_date': alert.resolved_date.isoformat() if alert.resolved_date else None,
+                'student_id': student.student_id,
+                'student_name': f"{user.first_name or student.first_name} {user.last_name or student.last_name}",
+                'course_id': course.course_id,
+                'course_name': f"{course.course_code} - {course.course_name}"
+            }
             
-            # Return demo data
-            demo_alerts = [
-                {
-                    'id': 1,
-                    'alert_id': 1,
-                    'type': 'Low Attendance',
-                    'alert_type': 'Low Attendance',
-                    'message': 'Student attendance below 70% threshold',
-                    'severity': 'warning',
-                    'status': 'active',
-                    'is_resolved': False,
-                    'is_read': False,
-                    'student_name': 'John Doe',
-                    'student_id': 'STU001',
-                    'course_name': 'CS101 - Introduction to Computer Science',
-                    'course_id': 1,
-                    'triggered_date': datetime.utcnow().isoformat(),
-                    'created_at': datetime.utcnow().isoformat()
-                },
-                {
-                    'id': 2,
-                    'alert_id': 2,
-                    'type': 'Grade Risk',
-                    'alert_type': 'Grade Risk',
-                    'message': 'Predicted to fail based on current performance',
-                    'severity': 'critical',
-                    'status': 'active',
-                    'is_resolved': False,
-                    'is_read': True,
-                    'student_name': 'Jane Smith',
-                    'student_id': 'STU002',
-                    'course_name': 'MATH101 - Calculus I',
-                    'course_id': 2,
-                    'triggered_date': (datetime.utcnow() - timedelta(days=1)).isoformat(),
-                    'created_at': (datetime.utcnow() - timedelta(days=1)).isoformat()
-                },
-                {
-                    'id': 3,
-                    'alert_id': 3,
-                    'type': 'Missing Assignments',
-                    'alert_type': 'Missing Assignments',
-                    'message': 'More than 2 assignments missing',
-                    'severity': 'warning',
-                    'status': 'resolved',
-                    'is_resolved': True,
-                    'is_read': True,
-                    'student_name': 'Bob Johnson',
-                    'student_id': 'STU003',
-                    'course_name': 'CS201 - Data Structures',
-                    'course_id': 3,
-                    'triggered_date': (datetime.utcnow() - timedelta(days=2)).isoformat(),
-                    'created_at': (datetime.utcnow() - timedelta(days=2)).isoformat(),
-                    'resolved_at': (datetime.utcnow() - timedelta(days=1)).isoformat()
-                }
-            ]
-            
-            # Apply filters to demo data
-            if severity:
-                demo_alerts = [a for a in demo_alerts if a['severity'] == severity]
-            if status:
-                if status == 'active':
-                    demo_alerts = [a for a in demo_alerts if not a['is_resolved']]
-                elif status == 'resolved':
-                    demo_alerts = [a for a in demo_alerts if a['is_resolved']]
-            if search:
-                demo_alerts = [a for a in demo_alerts if search.lower() in a['message'].lower() or search.lower() in a['type'].lower()]
-            
-            # Paginate demo data
-            start = (page - 1) * limit
-            end = start + limit
-            paginated_alerts = demo_alerts[start:end]
-            
-            return paginated_response(
-                data=paginated_alerts,
-                page=page,
-                per_page=limit,
-                total=len(demo_alerts),
-                message='Alerts retrieved successfully (demo data)'
-            )
+            alerts.append(alert_data)
+        
+        return paginated_response(
+            data=alerts,
+            page=page,
+            per_page=limit,
+            total=pagination.total,
+            message='Alerts retrieved successfully'
+        )
         
     except Exception as e:
         logger.error(f"Error fetching alerts: {str(e)}")
-        return error_response('Failed to fetch alerts', 500)
-    
+        # Don't return demo data - return the actual error
+        return error_response(f'Failed to fetch alerts: {str(e)}', 500)
 
 
 @admin_bp.route('/alerts/<int:alert_id>/resolve', methods=['PUT'])
@@ -851,26 +765,14 @@ def get_system_alerts():
 def resolve_alert(alert_id):
     """Mark an alert as resolved"""
     try:
-        try:
-            alert = Alert.query.get_or_404(alert_id)
-            alert.is_resolved = True
-            if hasattr(alert, 'resolved_at'):
-                alert.resolved_at = datetime.utcnow()
-            db.session.commit()
-            
-            return api_response({
-                'id': alert.id if hasattr(alert, 'id') else alert.alert_id,
-                'status': 'resolved',
-                'resolved_at': alert.resolved_at.isoformat() if hasattr(alert, 'resolved_at') and alert.resolved_at else datetime.utcnow().isoformat()
-            }, 'Alert resolved successfully')
-            
-        except:
-            # For demo purposes
-            return api_response({
-                'id': alert_id,
-                'status': 'resolved',
-                'resolved_at': datetime.utcnow().isoformat()
-            }, 'Alert resolved successfully (demo)')
+        user_id = get_jwt_identity()
+        alert_service.resolve_alert(alert_id, resolved_by=str(user_id))
+        
+        return api_response({
+            'id': alert_id,
+            'status': 'resolved',
+            'resolved_at': datetime.utcnow().isoformat()
+        }, 'Alert resolved successfully')
         
     except Exception as e:
         logger.error(f"Error resolving alert: {str(e)}")
@@ -883,49 +785,18 @@ def resolve_alert(alert_id):
 def get_alert_stats():
     """Get alert statistics"""
     try:
-        try:
-            # Total alerts
-            total_alerts = Alert.query.count()
-            
-            # Active alerts
-            active_alerts = Alert.query.filter(Alert.is_resolved == False).count()
-            
-            # Resolved alerts
-            resolved_alerts = Alert.query.filter(Alert.is_resolved == True).count()
-            
-            # Critical alerts
-            critical_alerts = Alert.query.filter(
-                Alert.severity == 'critical',
-                Alert.is_resolved == False
+        summary = alert_service.get_alert_summary()
+        
+        return api_response({
+            'total_alerts': Alert.query.count(),
+            'active_alerts': summary['total'],
+            'resolved_alerts': Alert.query.filter(Alert.is_resolved == True).count(),
+            'critical_alerts': summary['critical'],
+            'resolved_today': Alert.query.filter(
+                Alert.resolved_date >= datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0),
+                Alert.is_resolved == True
             ).count()
-            
-            # Resolved today
-            today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-            if hasattr(Alert, 'resolved_at'):
-                resolved_today = Alert.query.filter(
-                    Alert.resolved_at >= today_start,
-                    Alert.is_resolved == True
-                ).count()
-            else:
-                resolved_today = 0
-            
-            return api_response({
-                'total_alerts': total_alerts,
-                'active_alerts': active_alerts,
-                'resolved_alerts': resolved_alerts,
-                'critical_alerts': critical_alerts,
-                'resolved_today': resolved_today
-            }, 'Alert statistics retrieved successfully')
-            
-        except:
-            # Return demo stats
-            return api_response({
-                'total_alerts': 156,
-                'active_alerts': 42,
-                'resolved_alerts': 114,
-                'critical_alerts': 8,
-                'resolved_today': 12
-            }, 'Alert statistics retrieved successfully (demo)')
+        }, 'Alert statistics retrieved successfully')
         
     except Exception as e:
         logger.error(f"Error fetching alert stats: {str(e)}")
