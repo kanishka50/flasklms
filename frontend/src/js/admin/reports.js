@@ -140,9 +140,22 @@ document.addEventListener('DOMContentLoaded', function() {
         reportTitle.textContent = 'Executive Summary Report';
         currentReport = data;
         
+        // Handle empty or invalid data
+        if (!data || !data.period) {
+            showError('No data available for executive summary');
+            return;
+        }
+        
         const period = data.period;
         const startDate = new Date(period.start_date).toLocaleDateString();
         const endDate = new Date(period.end_date).toLocaleDateString();
+        
+        // Use default values if data is missing
+        const users = data.users || {};
+        const courses = data.courses || {};
+        const predictions = data.predictions || {};
+        const alerts = data.alerts || {};
+        const performance = data.performance || {};
         
         reportBody.innerHTML = `
             <div class="mb-6">
@@ -152,29 +165,29 @@ document.addEventListener('DOMContentLoaded', function() {
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                 <div class="bg-blue-50 p-4 rounded">
                     <h4 class="font-semibold text-blue-800 mb-2">Users</h4>
-                    <p class="text-2xl font-bold text-blue-600">${data.users.total_students}</p>
+                    <p class="text-2xl font-bold text-blue-600">${users.total_students || 0}</p>
                     <p class="text-sm text-gray-600">Total Students</p>
-                    <p class="text-lg font-semibold text-blue-600 mt-2">${data.users.active_students}</p>
+                    <p class="text-lg font-semibold text-blue-600 mt-2">${users.active_students || 0}</p>
                     <p class="text-sm text-gray-600">Active Students</p>
-                    <p class="text-lg font-semibold text-blue-600 mt-2">${data.users.total_faculty}</p>
+                    <p class="text-lg font-semibold text-blue-600 mt-2">${users.total_faculty || 0}</p>
                     <p class="text-sm text-gray-600">Faculty Members</p>
                 </div>
                 
                 <div class="bg-green-50 p-4 rounded">
                     <h4 class="font-semibold text-green-800 mb-2">Courses</h4>
-                    <p class="text-2xl font-bold text-green-600">${data.courses.total_courses}</p>
+                    <p class="text-2xl font-bold text-green-600">${courses.total_courses || 0}</p>
                     <p class="text-sm text-gray-600">Total Courses</p>
-                    <p class="text-lg font-semibold text-green-600 mt-2">${data.courses.active_courses}</p>
+                    <p class="text-lg font-semibold text-green-600 mt-2">${courses.active_courses || 0}</p>
                     <p class="text-sm text-gray-600">Active Courses</p>
                 </div>
                 
                 <div class="bg-purple-50 p-4 rounded">
                     <h4 class="font-semibold text-purple-800 mb-2">Predictions & Alerts</h4>
-                    <p class="text-2xl font-bold text-purple-600">${data.predictions.total_predictions}</p>
+                    <p class="text-2xl font-bold text-purple-600">${predictions.total_predictions || 0}</p>
                     <p class="text-sm text-gray-600">Predictions Generated</p>
-                    <p class="text-lg font-semibold text-red-600 mt-2">${data.predictions.high_risk_students}</p>
+                    <p class="text-lg font-semibold text-red-600 mt-2">${predictions.high_risk_students || 0}</p>
                     <p class="text-sm text-gray-600">High Risk Students</p>
-                    <p class="text-lg font-semibold text-yellow-600 mt-2">${data.alerts.unresolved_alerts}</p>
+                    <p class="text-lg font-semibold text-yellow-600 mt-2">${alerts.unresolved_alerts || 0}</p>
                     <p class="text-sm text-gray-600">Unresolved Alerts</p>
                 </div>
             </div>
@@ -184,7 +197,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="bg-gray-50 p-4 rounded">
                     <div class="flex justify-between items-center">
                         <span>Average Attendance Rate</span>
-                        <span class="font-semibold">${data.performance.average_attendance.toFixed(1)}%</span>
+                        <span class="font-semibold">${(performance.average_attendance || 0).toFixed(1)}%</span>
                     </div>
                 </div>
             </div>

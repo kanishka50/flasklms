@@ -32,9 +32,8 @@ class ReportsService:
             
             total_faculty = Faculty.query.count()
             total_courses = Course.query.count()
-            active_courses = CourseOffering.query.filter(
-                CourseOffering.is_active == True
-            ).count()
+            # Count all course offerings as active since is_active doesn't exist
+            active_courses = CourseOffering.query.count()
             
             # Prediction statistics
             total_predictions = Prediction.query.filter(
@@ -61,11 +60,16 @@ class ReportsService:
             ).count()
             
             # Average attendance rate
-            avg_attendance = db.session.query(
-                func.avg(Attendance.status == 'present')
-            ).filter(
+            attendance_records = db.session.query(Attendance).filter(
                 Attendance.attendance_date.between(start_date, end_date)
-            ).scalar() or 0
+            ).all()
+            
+            if attendance_records:
+                present_count = sum(1 for a in attendance_records if a.status == 'present')
+                total_count = len(attendance_records)
+                avg_attendance = (present_count / total_count) if total_count > 0 else 0
+            else:
+                avg_attendance = 0
             
             return {
                 'period': {
@@ -180,8 +184,6 @@ class ReportsService:
                 Enrollment, CourseOffering.offering_id == Enrollment.offering_id
             ).outerjoin(
                 AssessmentSubmission, Enrollment.enrollment_id == AssessmentSubmission.enrollment_id
-            ).filter(
-                CourseOffering.is_active == True
             ).group_by(Course.course_id, CourseOffering.offering_id).all()
             
             course_list = []
