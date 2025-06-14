@@ -661,3 +661,127 @@ def delete_course(course_id):
         logger.error(f"Error deleting course {course_id}: {str(e)}")
         db.session.rollback()
         return error_response("Failed to delete course", 500)
+    
+@admin_bp.route('/alerts', methods=['GET'])
+@jwt_required()
+def get_system_alerts():
+    """Get system alerts with pagination and filtering"""
+    try:
+        # Get query parameters
+        page = request.args.get('page', 1, type=int)
+        limit = request.args.get('limit', 10, type=int)
+        severity = request.args.get('severity', None)
+        status = request.args.get('status', None)
+        search = request.args.get('search', None)
+        
+        # Build query
+        query = Alert.query
+        
+        # Apply filters
+        if severity:
+            query = query.filter(Alert.severity == severity)
+        if status:
+            query = query.filter(Alert.status == status)
+        if search:
+            query = query.filter(
+                db.or_(
+                    Alert.message.ilike(f'%{search}%'),
+                    Alert.alert_type.ilike(f'%{search}%')
+                )
+            )
+        
+        # Order by created date (newest first)
+        query = query.order_by(desc(Alert.created_at))
+        
+        # Paginate
+        pagination = query.paginate(page=page, per_page=limit, error_out=False)
+        
+        # Format alerts
+        alerts = []
+        for alert in pagination.items:
+            alerts.append({
+                'id': alert.id,
+                'alert_type': alert.alert_type,
+                'message': alert.message,
+                'severity': alert.severity,
+                'status': alert.status,
+                'created_at': alert.created_at.isoformat() if alert.created_at else None,
+                'resolved_at': alert.resolved_at.isoformat() if alert.resolved_at else None,
+                'user_id': alert.user_id,
+                'student_id': alert.student_id,
+                'course_id': alert.course_id
+            })
+        
+        return paginated_response(
+            data=alerts,
+            page=page,
+            per_page=limit,
+            total=pagination.total,
+            message='Alerts retrieved successfully'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error fetching alerts: {str(e)}")
+        return error_response('Failed to fetch alerts', 500)
+
+@admin_bp.route('/alerts/<int:alert_id>/resolve', methods=['PUT'])
+@jwt_required()
+def resolve_alert(alert_id):
+    """Mark an alert as resolved"""
+    try:
+        alert = Alert.query.get_or_404(alert_id)
+        alert.status = 'resolved'
+        alert.resolved_at = datetime.utcnow()
+        db.session.commit()
+        
+        return api_response({
+            'id': alert.id,
+            'status': alert.status,
+            'resolved_at': alert.resolved_at.isoformat()
+        }, 'Alert resolved successfully')
+        
+    except Exception as e:
+        logger.error(f"Error resolving alert: {str(e)}")
+        db.session.rollback()
+        return error_response('Failed to resolve alert', 500)
+    
+@admin_bp.route('/alerts/stats', methods=['GET'])
+@jwt_required()
+def get_alert_stats():
+    """Get alert statistics"""
+    try:
+        # Total alerts
+        total_alerts = Alert.query.count()
+        
+        # Active alerts
+        active_alerts = Alert.query.filter_by(status='active').count()
+        
+        # Resolved alerts
+        resolved_alerts = Alert.query.filter_by(status='resolved').count()
+        
+        # Alerts by severity
+        severity_stats = db.session.query(
+            Alert.severity,
+            func.count(Alert.id)
+        ).filter(Alert.status == 'active').group_by(Alert.severity).all()
+        
+        # Recent alerts (last 24 hours)
+        recent_time = datetime.utcnow() - timedelta(hours=24)
+        recent_alerts = Alert.query.filter(
+            Alert.created_at >= recent_time
+        ).count()
+        
+        return api_response({
+            'total': total_alerts,
+            'active': active_alerts,
+            'resolved': resolved_alerts,
+            'recent_24h': recent_alerts,
+            'by_severity': {
+                severity: count for severity, count in severity_stats
+            }
+        }, 'Alert statistics retrieved successfully')
+        
+    except Exception as e:
+        logger.error(f"Error fetching alert stats: {str(e)}")
+        return error_response('Failed to fetch alert statistics', 500)
+
