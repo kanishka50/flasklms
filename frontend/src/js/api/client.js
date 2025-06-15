@@ -131,3 +131,43 @@ const apiClient = {
 };
 
 window.apiClient = apiClient;
+
+
+const academicApi = {
+    async getTerms() {
+        try {
+            const response = await apiClient.get('admin/terms');
+            return response;
+        } catch (error) {
+            console.error('Error fetching terms:', error);
+            throw error;
+        }
+    },
+    
+    async createTerm(termData) {
+        try {
+            const response = await apiClient.post('admin/terms', termData);
+            return response;
+        } catch (error) {
+            console.error('Error creating term:', error);
+            throw error;
+        }
+    }
+};
+
+// Faculty endpoints
+const facultyApi = {
+    async getList() {
+        try {
+            const response = await apiClient.get('admin/faculty/list');
+            return response;
+        } catch (error) {
+            console.error('Error fetching faculty list:', error);
+            throw error;
+        }
+    }
+};
+
+// Make sure these are available globally or export them
+window.academicApi = academicApi;
+window.facultyApi = facultyApi;

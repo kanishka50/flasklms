@@ -899,6 +899,14 @@ video {
   max-height: 100vh;
 }
 
+.max-h-\[60vh\] {
+  max-height: 60vh;
+}
+
+.max-h-\[80vh\] {
+  max-height: 80vh;
+}
+
 .min-h-screen {
   min-height: 100vh;
 }
@@ -2224,6 +2232,11 @@ video {
 .hover\:text-yellow-900:hover {
   --tw-text-opacity: 1;
   color: rgb(113 63 18 / var(--tw-text-opacity, 1));
+}
+
+.hover\:text-red-900:hover {
+  --tw-text-opacity: 1;
+  color: rgb(127 29 29 / var(--tw-text-opacity, 1));
 }
 
 .hover\:shadow-lg:hover {

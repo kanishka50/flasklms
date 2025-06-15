@@ -38,6 +38,13 @@ def get_statistics():
     """Get dashboard statistics"""
     try:
         stats = {}
+
+        # Get total courses count
+        try:
+            stats['total_courses'] = Course.query.count()
+        except Exception as e:
+            logger.error(f"Error counting courses: {str(e)}")
+            stats['total_courses'] = 0
         
         # Get user counts with error handling
         try:
@@ -107,6 +114,7 @@ def get_statistics():
         # Return partial data instead of failing completely
         return api_response(
             data={
+                'total_courses': 0,
                 'total_users': 0,
                 'active_students': 0,
                 'faculty_count': 0,
@@ -620,14 +628,23 @@ def create_course():
         db.session.rollback()
         return error_response("Failed to create course", 500)
     
-    
-@admin_bp.route('/courses/<int:course_id>', methods=['PUT'])
+
+@admin_bp.route('/courses/<course_id>', methods=['PUT'])
 @jwt_required()
 @admin_required
 def update_course(course_id):
     """Update course information"""
     try:
-        course = Course.query.get(course_id)
+        # Handle both integer and string course_id
+        course = None
+        
+        # First try to find by course_id as primary key
+        course = Course.query.filter_by(course_id=course_id).first()
+        
+        # If not found, try by course_code
+        if not course:
+            course = Course.query.filter_by(course_code=course_id).first()
+            
         if not course:
             return error_response("Course not found", 404)
             
@@ -637,7 +654,7 @@ def update_course(course_id):
         if 'course_code' in data and data['course_code'] != course.course_code:
             # Check if new code is available
             existing = Course.query.filter_by(course_code=data['course_code']).first()
-            if existing and existing.course_id != course_id:
+            if existing and existing.course_id != course.course_id:
                 return error_response("Course code already exists", 400)
             course.course_code = data['course_code']
         
@@ -659,18 +676,22 @@ def update_course(course_id):
         db.session.rollback()
         return error_response("Failed to update course", 500)
 
-@admin_bp.route('/courses/<int:course_id>', methods=['DELETE'])
+@admin_bp.route('/courses/<course_id>', methods=['DELETE'])
 @jwt_required()
 @admin_required
 def delete_course(course_id):
     """Delete a course (if no active offerings)"""
     try:
-        course = Course.query.get(course_id)
+        # Handle both integer and string course_id
+        course = Course.query.filter_by(course_id=course_id).first()
+        if not course:
+            course = Course.query.filter_by(course_code=course_id).first()
+            
         if not course:
             return error_response("Course not found", 404)
         
         # Check if course has active offerings
-        active_offerings = CourseOffering.query.filter_by(course_id=course_id).count()
+        active_offerings = CourseOffering.query.filter_by(course_id=course.course_id).count()
         if active_offerings > 0:
             return error_response("Cannot delete course with active offerings", 400)
         
@@ -941,22 +962,291 @@ def get_prediction_details(prediction_id):
         logger.error(f"Error getting prediction details: {str(e)}")
         return error_response("Failed to get prediction details", 500)
 
-@admin_bp.route('/predictions/course/<int:course_id>', methods=['GET'])
+@admin_bp.route('/courses/<course_id>', methods=['GET'])
 @jwt_required()
 @admin_required
-def get_course_predictions(course_id):
-    """Get prediction analytics for a specific course"""
+def get_course(course_id):
+    """Get course by ID or code"""
     try:
-        analytics = prediction_analytics_service.get_course_predictions(course_id)
+        course = Course.query.filter_by(course_id=course_id).first()
+        if not course:
+            course = Course.query.filter_by(course_code=course_id).first()
+            
+        if not course:
+            return error_response("Course not found", 404)
+        
+        # Get active offerings count
+        active_offerings = CourseOffering.query.filter_by(
+            course_id=course.course_id
+        ).count()
+        
+        course_data = {
+            'course_id': course.course_id,
+            'course_code': course.course_code,
+            'course_name': course.course_name,
+            'credits': course.credits,
+            'description': course.description if hasattr(course, 'description') else '',
+            'active_offerings': active_offerings
+        }
+        
+        return api_response(data=course_data, message="Course retrieved successfully")
+        
+    except Exception as e:
+        logger.error(f"Error getting course {course_id}: {str(e)}")
+        return error_response("Failed to get course", 500)
+    
+
+@admin_bp.route('/courses/<course_id>/offerings', methods=['GET'])
+@jwt_required()
+@admin_required
+def get_course_offerings(course_id):
+    """Get offerings for a specific course"""
+    try:
+        # Find course
+        course = Course.query.filter_by(course_id=course_id).first()
+        if not course:
+            course = Course.query.filter_by(course_code=course_id).first()
+            
+        if not course:
+            return error_response("Course not found", 404)
+        
+        # Get offerings with joins for related data
+        offerings = db.session.query(CourseOffering).filter_by(
+            course_id=course.course_id
+        ).join(
+            AcademicTerm, CourseOffering.term_id == AcademicTerm.term_id
+        ).order_by(
+            AcademicTerm.start_date.desc(),
+            CourseOffering.section_number
+        ).all()
+        
+        offerings_data = []
+        for offering in offerings:
+            # Get enrollment count
+            enrolled_count = Enrollment.query.filter_by(
+                offering_id=offering.offering_id,
+                enrollment_status='enrolled'
+            ).count()
+            
+            offering_data = {
+                'offering_id': offering.offering_id,
+                'section_number': offering.section_number,
+                'capacity': offering.capacity,
+                'enrolled_count': enrolled_count,
+                'meeting_pattern': offering.meeting_pattern,
+                'location': offering.location,
+                'faculty_name': 'TBA',
+                'term': offering.term.term_name if offering.term else 'Unknown'
+            }
+            
+            # Get faculty name if assigned
+            if offering.faculty_id and offering.faculty:
+                offering_data['faculty_name'] = f"{offering.faculty.first_name} {offering.faculty.last_name}"
+            
+            offerings_data.append(offering_data)
         
         return api_response(
-            data=analytics,
-            message="Course predictions retrieved successfully"
+            data={
+                'course': {
+                    'course_code': course.course_code,
+                    'course_name': course.course_name
+                },
+                'offerings': offerings_data
+            },
+            message="Offerings retrieved successfully"
         )
         
     except Exception as e:
-        logger.error(f"Error getting course predictions: {str(e)}")
-        return error_response("Failed to get course predictions", 500)
+        logger.error(f"Error getting offerings for course {course_id}: {str(e)}")
+        return error_response("Failed to get offerings", 500)
+    
+@admin_bp.route('/offerings', methods=['POST'])
+@jwt_required()
+@admin_required
+def create_offering():
+    """Create a new course offering"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['course_id', 'term_id', 'section_number', 'capacity']
+        for field in required_fields:
+            if field not in data:
+                return error_response(f"Missing required field: {field}", 400)
+        
+        # Check if course exists
+        course = Course.query.filter_by(course_id=data['course_id']).first()
+        if not course:
+            return error_response("Course not found", 404)
+        
+        # Check if term exists
+        term = AcademicTerm.query.get(data['term_id'])
+        if not term:
+            return error_response("Academic term not found", 404)
+        
+        # Check if section already exists for this course and term
+        existing = CourseOffering.query.filter_by(
+            course_id=data['course_id'],
+            term_id=data['term_id'],
+            section_number=data['section_number']
+        ).first()
+        
+        if existing:
+            return error_response("Section already exists for this course and term", 400)
+        
+        # Create offering
+        offering = CourseOffering(
+            course_id=data['course_id'],
+            term_id=data['term_id'],
+            section_number=data['section_number'],
+            faculty_id=data.get('faculty_id'),
+            capacity=data['capacity'],
+            location=data.get('location'),
+            meeting_pattern=data.get('meeting_pattern')
+        )
+        
+        db.session.add(offering)
+        db.session.commit()
+        
+        return api_response(
+            data={'offering_id': offering.offering_id},
+            message="Course offering created successfully",
+            status=201
+        )
+        
+    except Exception as e:
+        logger.error(f"Error creating offering: {str(e)}")
+        db.session.rollback()
+        return error_response("Failed to create offering", 500)
+
+@admin_bp.route('/offerings/<int:offering_id>', methods=['PUT'])
+@jwt_required()
+@admin_required
+def update_offering(offering_id):
+    """Update course offering"""
+    try:
+        offering = CourseOffering.query.get(offering_id)
+        if not offering:
+            return error_response("Offering not found", 404)
+        
+        data = request.get_json()
+        
+        # Update fields
+        if 'section_number' in data:
+            # Check if new section number is available
+            existing = CourseOffering.query.filter_by(
+                course_id=offering.course_id,
+                term_id=offering.term_id,
+                section_number=data['section_number']
+            ).first()
+            
+            if existing and existing.offering_id != offering_id:
+                return error_response("Section number already exists", 400)
+            
+            offering.section_number = data['section_number']
+        
+        if 'faculty_id' in data:
+            offering.faculty_id = data['faculty_id']
+        
+        if 'capacity' in data:
+            offering.capacity = data['capacity']
+        
+        if 'location' in data:
+            offering.location = data['location']
+        
+        if 'meeting_pattern' in data:
+            offering.meeting_pattern = data['meeting_pattern']
+        
+        db.session.commit()
+        
+        return api_response(message="Offering updated successfully")
+        
+    except Exception as e:
+        logger.error(f"Error updating offering {offering_id}: {str(e)}")
+        db.session.rollback()
+        return error_response("Failed to update offering", 500)
+
+@admin_bp.route('/offerings/<int:offering_id>', methods=['DELETE'])
+@jwt_required()
+@admin_required
+def delete_offering(offering_id):
+    """Delete course offering"""
+    try:
+        offering = CourseOffering.query.get(offering_id)
+        if not offering:
+            return error_response("Offering not found", 404)
+        
+        # Check if offering has enrollments
+        enrollment_count = Enrollment.query.filter_by(offering_id=offering_id).count()
+        if enrollment_count > 0:
+            return error_response("Cannot delete offering with active enrollments", 400)
+        
+        db.session.delete(offering)
+        db.session.commit()
+        
+        return api_response(message="Offering deleted successfully")
+        
+    except Exception as e:
+        logger.error(f"Error deleting offering {offering_id}: {str(e)}")
+        db.session.rollback()
+        return error_response("Failed to delete offering", 500)
+    
+@admin_bp.route('/terms', methods=['GET'])
+@jwt_required()
+def get_academic_terms():
+    """Get all academic terms"""
+    try:
+        terms = AcademicTerm.query.order_by(AcademicTerm.start_date.desc()).all()
+        
+        terms_data = []
+        for term in terms:
+            terms_data.append({
+                'term_id': term.term_id,
+                'term_name': term.term_name,
+                'term_code': term.term_code,
+                'start_date': term.start_date.isoformat() if term.start_date else None,
+                'end_date': term.end_date.isoformat() if term.end_date else None,
+                'is_current': term.is_current
+            })
+        
+        return api_response(
+            data={'terms': terms_data},
+            message="Terms retrieved successfully"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error getting terms: {str(e)}")
+        return error_response("Failed to get terms", 500)
+
+@admin_bp.route('/faculty/list', methods=['GET'])
+@jwt_required()
+def get_faculty_list():
+    """Get list of all faculty for dropdowns"""
+    try:
+        faculty_members = Faculty.query.join(User).filter(
+            User.is_active == True
+        ).order_by(Faculty.last_name, Faculty.first_name).all()
+        
+        faculty_data = []
+        for faculty in faculty_members:
+            faculty_data.append({
+                'faculty_id': faculty.faculty_id,
+                'first_name': faculty.first_name,
+                'last_name': faculty.last_name,
+                'department': faculty.department if hasattr(faculty, 'department') else None
+            })
+        
+        return api_response(
+            data={'faculty': faculty_data},
+            message="Faculty list retrieved successfully"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error getting faculty list: {str(e)}")
+        return error_response("Failed to get faculty list", 500)
+
+
+
 
 @admin_bp.route('/predictions/model/performance', methods=['GET'])
 @jwt_required()

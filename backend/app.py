@@ -8,6 +8,7 @@ from flask import send_from_directory
 from backend.middleware.activity_tracker import ActivityTracker
 
 
+
 def create_app(config_name=None):
     """Create and configure the Flask application"""
     

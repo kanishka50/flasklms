@@ -225,6 +225,46 @@ const adminApi = {
             throw error;
         }
     },
+    async getCourseOfferings(courseId) {
+    try {
+        const response = await apiClient.get(`admin/courses/${courseId}/offerings`);
+        return response;
+    } catch (error) {
+        console.error('Error fetching course offerings:', error);
+        throw error;
+    }
+},
+
+// Also add these offering-related functions:
+async createCourseOffering(courseId, offeringData) {
+    try {
+        const response = await apiClient.post(`admin/courses/${courseId}/offerings`, offeringData);
+        return response;
+    } catch (error) {
+        console.error('Error creating course offering:', error);
+        throw error;
+    }
+},
+
+async updateCourseOffering(courseId, offeringId, offeringData) {
+    try {
+        const response = await apiClient.put(`admin/courses/${courseId}/offerings/${offeringId}`, offeringData);
+        return response;
+    } catch (error) {
+        console.error('Error updating course offering:', error);
+        throw error;
+    }
+},
+
+async deleteCourseOffering(courseId, offeringId) {
+    try {
+        const response = await apiClient.delete(`admin/courses/${courseId}/offerings/${offeringId}`);
+        return response;
+    } catch (error) {
+        console.error('Error deleting course offering:', error);
+        throw error;
+    }
+}
 };
 
 // Make it available globally
