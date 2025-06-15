@@ -146,11 +146,12 @@ class ActivityTracker:
         path = request.path.lower()
         
         # Map paths to activity types
-        if '/dashboard' in path:
+        
+        if '/api/student/dashboard' in path or '/dashboard' in path:
             return 'page_view'
-        elif '/courses' in path:
+        elif '/api/student/courses' in path or '/courses' in path:
             return 'resource_view'
-        elif '/assessments' in path:
+        elif '/api/student/assessments' in path or '/assessments' in path:
             return 'assignment_view'
         elif '/quiz' in path:
             return 'quiz_attempt'
@@ -207,3 +208,4 @@ def track_activity(activity_type, resource_id=None, resource_name=None, **kwargs
     except Exception as e:
         logger.error(f"Error in manual activity tracking: {str(e)}")
         db.session.rollback()
+

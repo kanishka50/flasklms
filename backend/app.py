@@ -8,7 +8,6 @@ from flask import send_from_directory
 from backend.middleware.activity_tracker import ActivityTracker
 
 
-
 def create_app(config_name=None):
     """Create and configure the Flask application"""
     
@@ -50,23 +49,9 @@ def create_app(config_name=None):
         return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
     
     app.logger.info(f"Application started in {config_name} mode")
-
-    # Initialize JWT
-    jwt = JWTManager(app)
-    
-    # Import User model here before using it
-    from backend.models import User
-    
-    @jwt.user_identity_loader
-    def user_identity_lookup(user):
-        return user.id if hasattr(user, 'id') else user
-    
-    @jwt.user_lookup_loader
-    def user_lookup_callback(_jwt_header, jwt_data):
-        identity = jwt_data["sub"]
-        return User.query.filter_by(user_id=identity).one_or_none()  # Also note: should be user_id, not id
     
     return app
+
 
 def initialize_extensions(app):
     """Initialize Flask extensions"""
@@ -74,12 +59,16 @@ def initialize_extensions(app):
     migrate.init_app(app, db)
     login_manager.init_app(app)
     jwt.init_app(app)
-    # Remove cors.init_app(app) since we're using configure_cors
     mail.init_app(app)
 
-     # Initialize activity tracker HERE
+    # Initialize activity tracker
     activity_tracker = ActivityTracker(app)
     app.logger.info("Activity tracker initialized")
+    
+    # Set up JWT user loading for activity tracker
+    from backend.middleware.jwt_middleware import load_logged_in_user
+    app.before_request(load_logged_in_user)
+    app.logger.info("JWT user loading middleware registered")
     
     # Configure login manager
     from backend.models import User
@@ -88,43 +77,54 @@ def initialize_extensions(app):
     def load_user(user_id):
         return User.query.get(int(user_id))
     
-   
-    
     login_manager.login_view = 'auth.login'
     login_manager.login_message = 'Please log in to access this page'
     login_manager.login_message_category = 'info'
+    
+    # Configure JWT callbacks
+    @jwt.user_identity_loader
+    def user_identity_lookup(user):
+        return user.user_id if hasattr(user, 'user_id') else user
+    
+    @jwt.user_lookup_loader
+    def user_lookup_callback(_jwt_header, jwt_data):
+        identity = jwt_data["sub"]
+        return User.query.filter_by(user_id=identity).one_or_none()
+
 
 def register_blueprints(app):
     """Register Flask blueprints"""
     try:
-         # Import blueprints INSIDE the function to avoid circular imports
+        # Import blueprints INSIDE the function to avoid circular imports
         from backend.api.auth import auth_bp
         from backend.api.student import student_bp
-        from backend.api.student.attendance_routes import student_attendance_bp  # ADD THIS
+        from backend.api.student.attendance_routes import student_attendance_bp
         from backend.api.faculty import faculty_bp
-        from backend.api.faculty.attendance_routes import faculty_attendance_bp  # ADD THIS TOO
+        from backend.api.faculty.attendance_routes import faculty_attendance_bp
         from backend.api.admin import admin_bp
         from backend.api.prediction import prediction_bp
         from backend.api.common import common_bp
         from backend.api.alert import alert_bp
-        
+        from backend.api.student.lms_routes import lms_bp
         
         # Register blueprints with URL prefixes
         app.register_blueprint(auth_bp, url_prefix='/api/auth')
         app.register_blueprint(student_bp, url_prefix='/api/student')
-        app.register_blueprint(student_attendance_bp)  # ADD THIS (already has prefix)
+        app.register_blueprint(student_attendance_bp)  # already has prefix
         app.register_blueprint(faculty_bp, url_prefix='/api/faculty')
-        app.register_blueprint(faculty_attendance_bp)  # ADD THIS (already has prefix)
+        app.register_blueprint(faculty_attendance_bp)  # already has prefix
         app.register_blueprint(admin_bp, url_prefix='/api/admin')
         app.register_blueprint(prediction_bp, url_prefix='/api/prediction')
         app.register_blueprint(common_bp, url_prefix='/api/common')
         app.register_blueprint(alert_bp)
+        app.register_blueprint(lms_bp)
         
         app.logger.info("All blueprints registered successfully")
         
     except ImportError as e:
         app.logger.error(f"Error importing blueprints: {str(e)}")
         # Continue anyway to get partial functionality
+
 
 def register_error_handlers(app):
     """Register error handlers"""
@@ -134,6 +134,7 @@ def register_error_handlers(app):
         app.logger.info("Error handlers registered")
     except ImportError as e:
         app.logger.warning(f"Error handlers not available: {str(e)}")
+
 
 def register_shell_context(app):
     """Register shell context objects"""
@@ -178,4 +179,3 @@ def register_commands(app):
             """Test if commands are working"""
             print("Basic commands are working!")
             print("But main commands file not found: backend/commands.py")
-

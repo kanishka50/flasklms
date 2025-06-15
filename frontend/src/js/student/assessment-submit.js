@@ -77,18 +77,24 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
         showLoading(true);
         
-        console.log('Loading assessment with ID:', assessmentId); // ADD THIS
+        console.log('Loading assessment with ID:', assessmentId);
         const response = await apiClient.get(`student/assessments/${assessmentId}`);
-        console.log('API Response:', response); // ADD THIS
+        console.log('API Response:', response);
         
         if (response.status === 'success' && response.data) {
             assessmentData = response.data;
-            console.log('Assessment Data:', assessmentData); // ADD THIS
+            console.log('Assessment Data:', assessmentData);
+            
+            // Track assessment view AFTER data is loaded
+            if (typeof activityTracker !== 'undefined' && assessmentData) {
+                activityTracker.trackAssessmentView(assessmentId, assessmentData.title);
+            }
+            
             displayAssessmentInfo();
             checkSubmissionStatus();
             showLoading(false);
         } else {
-            console.log('No data in response'); // ADD THIS
+            console.log('No data in response');
             throw new Error('Failed to load assessment details');
         }
     } catch (error) {

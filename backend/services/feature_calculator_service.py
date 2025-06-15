@@ -219,26 +219,58 @@ class FeatureCalculator:
         scores = [safe_float(s.score) for s in submissions if s.score is not None]
         features['avg_score'] = np.mean(scores) if scores else 0
         
-        # Scores by assessment type
-        cma_scores = []
-        tma_scores = []
-        exam_scores = []
+        # Scores by assessment type - MAPPING YOUR TYPES TO MODEL EXPECTATIONS
+        cma_scores = []  # Continuous assessments (Quiz, Assignment, Participation)
+        tma_scores = []  # Tutor marked assessments (Midterm Exam, CMA, TMA)
+        exam_scores = [] # Final exams (Final Exam, Exam)
+        
+        # Type mapping based on your assessment_types table
+        TYPE_MAPPING = {
+           # Map to CMA (Continuous Assessment)
+        'Quiz': 'CMA',
+        'Assignment': 'CMA',
+        'Participation': 'CMA',
+        
+        # Map to TMA (Tutor Marked Assessment)
+        'Midterm Exam': 'TMA',
+        'CMA': 'TMA',  # Your CMA maps to model's TMA
+        'TMA': 'TMA',
+        
+        # Map to Exam
+        'Final Exam': 'Exam',
+        'Exam': 'Exam'
+        }
         
         for submission in submissions:
             if submission.assessment and submission.score is not None:
                 score = safe_float(submission.score)
-                assessment_type = submission.assessment.assessment_type_mapped
                 
-                if assessment_type == 'CMA':
-                    cma_scores.append(score)
-                elif assessment_type == 'TMA':
-                    tma_scores.append(score)
-                elif assessment_type == 'Exam':
-                    exam_scores.append(score)
+                # Get the assessment type name from the relationship
+                assessment = submission.assessment
+                if assessment and assessment.assessment_type:
+                    type_name = assessment.assessment_type.type_name
+                    
+                    # Map to model expected types
+                    model_type = TYPE_MAPPING.get(type_name, None)
+                    
+                    if model_type == 'CMA':
+                        cma_scores.append(score)
+                    elif model_type == 'TMA':
+                        tma_scores.append(score)
+                    elif model_type == 'Exam':
+                        exam_scores.append(score)
+                        
+                    # Debug logging
+                    logger.debug(f"Assessment: {assessment.title}, Type: {type_name} -> {model_type}, Score: {score}")
         
         features['avg_score_cma'] = np.mean(cma_scores) if cma_scores else 0
         features['avg_score_tma'] = np.mean(tma_scores) if tma_scores else 0
         features['avg_score_exam'] = np.mean(exam_scores) if exam_scores else 0
+        
+        # Log the calculated averages for debugging
+        logger.info(f"Enrollment {enrollment_id} - CMA: {features['avg_score_cma']:.2f} ({len(cma_scores)} scores), "
+                    f"TMA: {features['avg_score_tma']:.2f} ({len(tma_scores)} scores), "
+                    f"Exam: {features['avg_score_exam']:.2f} ({len(exam_scores)} scores)")
         
         # Submission timing features
         on_time = 0
