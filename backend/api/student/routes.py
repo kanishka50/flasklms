@@ -886,14 +886,50 @@ def get_grades_summary():
         
         student_id = user.student.student_id
         
-        # Get grades summary
-        summary = grade_service.get_student_grades_summary(student_id)
+        # Get all assessments with grades using the assessment service
+        assessments = assessment_service.get_student_assessments(student_id)
+        
+        # Calculate summary statistics
+        graded_assessments = [a for a in assessments if a['score'] is not None]
+        
+        if graded_assessments:
+            total_points = sum(a['score'] for a in graded_assessments)
+            total_possible = sum(a['max_score'] for a in graded_assessments)
+            overall_percentage = (total_points / total_possible * 100) if total_possible > 0 else 0
+            
+            # Count by grade
+            grade_counts = {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'F': 0}
+            for assessment in graded_assessments:
+                percentage = assessment['percentage']
+                if percentage >= 90:
+                    grade_counts['A'] += 1
+                elif percentage >= 80:
+                    grade_counts['B'] += 1
+                elif percentage >= 70:
+                    grade_counts['C'] += 1
+                elif percentage >= 60:
+                    grade_counts['D'] += 1
+                else:
+                    grade_counts['F'] += 1
+        else:
+            overall_percentage = 0
+            grade_counts = {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'F': 0}
+        
+        summary = {
+            'total_assessments': len(assessments),
+            'graded_assessments': len(graded_assessments),
+            'pending_assessments': len(assessments) - len(graded_assessments),
+            'overall_percentage': round(overall_percentage, 2),
+            'grade_distribution': grade_counts
+        }
         
         return api_response(summary, 'Grades summary retrieved successfully')
         
     except Exception as e:
         logger.error(f"Error getting grades summary: {str(e)}")
         return error_response('Failed to get grades summary', 500)
+    
+
     
 @student_bp.route('/predictions', methods=['GET'])
 @jwt_required()
