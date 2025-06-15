@@ -31,7 +31,8 @@ document.addEventListener('DOMContentLoaded', function() {
         dashboardSummary: {},
         gradeChart: null,
         isLoading: false,
-        isInitialized: false
+        isInitialized: false,
+        gradeChartRendered: false
     };
     
     // Initialize
@@ -248,16 +249,18 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Helper functions
     function getGradeColor(grade) {
-        if (['A', 'A-', 'B+', 'B'].includes(grade)) return 'text-green-600';
-        if (['B-', 'C+', 'C'].includes(grade)) return 'text-yellow-600';
-        if (['C-', 'D+', 'D', 'D-', 'F'].includes(grade)) return 'text-red-600';
-        return 'text-gray-600';
-    }
+    if (['A', 'A-', 'B+', 'B'].includes(grade)) return 'text-green-600';
+    if (['B-', 'C+', 'C'].includes(grade)) return 'text-yellow-600';
+    if (['C-', 'D+', 'D', 'D-', 'F', 'Fail'].includes(grade) || grade?.toLowerCase() === 'fail') return 'text-red-600';
+    return 'text-gray-600';
+}
     
     function isStudentAtRisk(course) {
-        return ['C-', 'D+', 'D', 'D-', 'F'].includes(course.predicted_grade) || 
-               (course.attendance_rate && course.attendance_rate < 60);
-    }
+    const grade = course.predicted_grade;
+    return ['C-', 'D+', 'D', 'D-', 'F', 'Fail'].includes(grade) || 
+           grade?.toLowerCase() === 'fail' ||
+           (course.attendance_rate && course.attendance_rate < 60);
+}
     
     function attachCourseCardListeners() {
         // Use event delegation for better performance
@@ -329,47 +332,62 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    function updateProgressCharts() {
-        // Update attendance trend
-        updateAttendanceTrend();
-        
-        // Replace chart with grade summary
-        updateGradeSummary();
+function updateProgressCharts() {
+    // Update attendance trend
+    updateAttendanceTrend();
+    
+    // Update grade summary directly
+    updateGradeSummary();
+}
+    
+function updateGradeSummary() {
+    console.log('updateGradeSummary called'); // Debug log
+    
+    // Look for the correct element
+    const gradeChart = document.getElementById('gradeChart');
+    if (!gradeChart) {
+        console.error('Grade chart element not found');
+        return;
     }
     
-    function updateGradeSummary() {
-        const gradeContainer = document.getElementById('gradeChart');
-        if (!gradeContainer) return;
+    console.log('Courses data:', state.allCourses); // Debug log
+    
+    // Calculate grade distribution
+    const gradeDistribution = {
+        'A': 0,
+        'B': 0,
+        'C': 0,
+        'D': 0,
+        'F': 0
+    };
+    
+    let total = 0;
+    state.allCourses.forEach(course => {
+        const grade = course.predicted_grade || course.current_grade;
+        console.log(`Course ${course.course_code}: grade = ${grade}`); // Debug log
         
-        // Calculate grade distribution
-        const gradeDistribution = {
-            'A': 0,
-            'B': 0,
-            'C': 0,
-            'D': 0,
-            'F': 0
-        };
+        if (!grade || grade === 'N/A') return;
         
-        let total = 0;
-        state.allCourses.forEach(course => {
-            const grade = course.predicted_grade || course.current_grade;
-            if (!grade || grade === 'N/A') return;
-            
-            if (['A+', 'A', 'A-'].includes(grade)) gradeDistribution['A']++;
-            else if (['B+', 'B', 'B-'].includes(grade)) gradeDistribution['B']++;
-            else if (['C+', 'C', 'C-'].includes(grade)) gradeDistribution['C']++;
-            else if (['D+', 'D', 'D-'].includes(grade)) gradeDistribution['D']++;
-            else if (grade === 'F') gradeDistribution['F']++;
-            total++;
-        });
+        // Handle both letter grades and "Fail"
+        if (['A+', 'A', 'A-'].includes(grade)) gradeDistribution['A']++;
+        else if (['B+', 'B', 'B-'].includes(grade)) gradeDistribution['B']++;
+        else if (['C+', 'C', 'C-'].includes(grade)) gradeDistribution['C']++;
+        else if (['D+', 'D', 'D-'].includes(grade)) gradeDistribution['D']++;
+        else if (grade === 'F' || grade === 'Fail' || grade.toLowerCase() === 'fail') gradeDistribution['F']++;
         
-        // Create a simple static pie chart using SVG
-        const pieChartHTML = createStaticPieChart(gradeDistribution, total);
-        
-        // Replace canvas with our static pie chart
-        gradeContainer.parentElement.innerHTML = '<h4 class="font-medium text-gray-900 mb-3">Grade Distribution</h4>' + 
-            '<div id="gradeChart" class="flex justify-center">' + pieChartHTML + '</div>';
-    }
+        total++;
+    });
+    
+    console.log('Grade distribution:', gradeDistribution, 'Total:', total); // Debug log
+    
+    // Create the chart HTML
+    const pieChartHTML = createStaticPieChart(gradeDistribution, total);
+    
+    // Simply replace the content of the gradeChart div
+    gradeChart.innerHTML = pieChartHTML;
+    
+    console.log('Chart rendered'); // Debug log
+}
     
     function createStaticPieChart(data, total) {
         if (total === 0) {
