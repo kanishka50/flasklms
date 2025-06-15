@@ -286,48 +286,48 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function displayAtRiskStudents(students) {
-        if (!students || students.length === 0) {
-            atRiskStudentsList.innerHTML = '<p class="text-gray-500">No at-risk students identified</p>';
-            return;
-        }
+    if (!students || students.length === 0) {
+        atRiskStudentsList.innerHTML = '<p class="text-gray-500">No at-risk students identified</p>';
+        return;
+    }
+    
+    // Show only first 5 at-risk students
+    const displayStudents = students.slice(0, 5);
+    
+    let html = '';
+    displayStudents.forEach(student => {
+        const riskColor = student.risk_level === 'high' ? 'text-red-600' : 
+                         student.risk_level === 'medium' ? 'text-yellow-600' : 'text-blue-600';
         
-        // Show only first 5 at-risk students
-        const displayStudents = students.slice(0, 5);
-        
-        let html = '';
-        displayStudents.forEach(student => {
-            const riskColor = student.risk_level === 'high' ? 'text-red-600' : 
-                             student.risk_level === 'medium' ? 'text-yellow-600' : 'text-blue-600';
-            
-            html += `
-                <div class="border-b pb-3 mb-3 last:border-b-0">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <h4 class="font-semibold text-gray-900">${student.student_name}</h4>
-                            <p class="text-sm text-gray-600">${student.course_code} • ID: ${student.student_id}</p>
-                            <p class="text-sm ${riskColor}">Risk Level: ${student.risk_level}</p>
-                        </div>
-                        <div class="text-right">
-                            <div class="text-sm font-medium ${riskColor}">${student.predicted_grade}</div>
-                            <div class="text-xs text-gray-500">Predicted</div>
-                        </div>
+        html += `
+            <div class="border-b pb-3 mb-3 last:border-b-0">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <h4 class="font-semibold text-gray-900">${student.name || `${student.first_name || 'Unknown'} ${student.last_name || ''}`}</h4>
+                        <p class="text-sm text-gray-600">${student.course_code} • ID: ${student.student_id}</p>
+                        <p class="text-sm ${riskColor}">Risk Level: ${student.risk_level}</p>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-sm font-medium ${riskColor}">${student.predicted_grade}</div>
+                        <div class="text-xs text-gray-500">Predicted</div>
                     </div>
                 </div>
-            `;
-        });
-        
-        if (students.length > 5) {
-            html += `
-                <div class="text-center pt-2">
-                    <a href="students.html" class="text-blue-600 hover:text-blue-800 text-sm font-medium">
-                        View all ${students.length} at-risk students →
-                    </a>
-                </div>
-            `;
-        }
-        
-        atRiskStudentsList.innerHTML = html;
+            </div>
+        `;
+    });
+    
+    if (students.length > 5) {
+        html += `
+            <div class="text-center pt-2">
+                <a href="students.html" class="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                    View all ${students.length} at-risk students →
+                </a>
+            </div>
+        `;
     }
+    
+    atRiskStudentsList.innerHTML = html;
+}
 
     function updateCourseStats(courses) {
     const totalCourses = courses.length;
