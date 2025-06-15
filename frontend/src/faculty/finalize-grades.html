@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finalize Grades - Faculty Portal</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50">
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <h1 class="text-xl font-semibold">Grade Finalization</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span id="username" class="text-gray-700"></span>
+                    <button id="backBtn" class="text-blue-600 hover:text-blue-800">Back to Dashboard</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Course Info -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-2xl font-bold mb-2" id="courseTitle">Loading...</h2>
+            <p class="text-gray-600" id="courseDetails"></p>
+        </div>
+
+        <!-- Action Bar -->
+        <div class="bg-white rounded-lg shadow-md p-4 mb-6">
+            <div class="flex justify-between items-center">
+                <div>
+                    <span class="text-sm text-gray-600">
+                        <span id="totalStudents">0</span> students | 
+                        <span id="finalizedCount">0</span> finalized
+                    </span>
+                </div>
+                <div class="space-x-2">
+                    <button id="selectAllBtn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
+                        Select All
+                    </button>
+                    <button id="finalizeSelectedBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400" disabled>
+                        Finalize Selected
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Grade Table -->
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <table class="min-w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-left">
+                            <input type="checkbox" id="selectAllCheckbox" class="rounded">
+                        </th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Student</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quiz (20%)</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assignment (30%)</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Midterm (25%)</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Final (25%)</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Suggested</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Final Grade</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    </tr>
+                </thead>
+                <tbody id="gradeTableBody" class="bg-white divide-y divide-gray-200">
+                    <tr>
+                        <td colspan="10" class="px-4 py-8 text-center text-gray-500">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Override Reason Modal -->
+    <div id="overrideModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <h3 class="text-lg font-bold mb-4">Grade Override Reason</h3>
+            <p class="text-sm text-gray-600 mb-4">You are changing the grade from <span id="suggestedGradeText"></span> to <span id="overrideGradeText"></span>. Please provide a reason:</p>
+            <textarea id="overrideReason" class="w-full p-2 border rounded" rows="3" placeholder="Enter reason for grade override..."></textarea>
+            <div class="mt-4 flex justify-end space-x-2">
+                <button id="cancelOverride" class="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400">Cancel</button>
+                <button id="confirmOverride" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.2/dist/axios.min.js"></script>
+    
+    <!-- CORRECTED: Updated script paths to match your directory structure -->
+    <script src="../js/api/client.js"></script>
+    <script src="../js/api/auth.js"></script>
+    <script src="../js/api/faculty.js"></script>
+    <script src="../js/utils/auth-guard.js"></script>
+    <script src="../js/faculty/finalize-grades.js"></script>
+</body>
+</html>

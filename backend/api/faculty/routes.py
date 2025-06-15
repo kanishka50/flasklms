@@ -1,6 +1,9 @@
 # backend/api/faculty/routes.py - CLEANED VERSION (Remove attendance routes)
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, session
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from backend.models.academic import Enrollment
+from backend.models.assessment import Assessment, AssessmentSubmission
+from backend.models.user import Faculty, Student
 from backend.services.faculty_service import faculty_service
 from backend.services.auth_service import get_user_by_id
 from backend.services.assessment_service import assessment_service
@@ -13,6 +16,8 @@ from backend.models import User, CourseOffering
 import os
 from flask import send_file, current_app
 from werkzeug.utils import secure_filename 
+from backend.services.gpa_service import gpa_service
+from flask_login import login_required, current_user
 
 
 logger = logging.getLogger(__name__)
@@ -1143,3 +1148,126 @@ def download_submission_file(submission_id):
     except Exception as e:
         logger.error(f"Error downloading submission file: {str(e)}")
         return error_response('Failed to download file', 500)
+    
+
+#gpa roues 
+
+
+@faculty_bp.route('/courses/<int:offering_id>/grade-summary', methods=['GET'])
+@jwt_required()
+@faculty_required
+def get_grade_summary(offering_id):
+    """Get grade summary for all students in a course"""
+    try:
+        # Get current user using JWT
+        user_id = get_jwt_identity()
+        user = get_user_by_id(user_id)
+        
+        if not user or not user.faculty:
+            return jsonify({'status': 'error', 'message': 'Faculty profile not found'}), 404
+        
+        # Verify faculty teaches this course
+        faculty = user.faculty
+        offering = CourseOffering.query.filter_by(
+            offering_id=offering_id,
+            faculty_id=faculty.faculty_id
+        ).first()
+        
+        if not offering:
+            return jsonify({'status': 'error', 'message': 'Unauthorized'}), 403
+        
+        # Get grade summary
+        summary = gpa_service.get_course_grade_summary(offering_id)
+        
+        # Add course info
+        course_info = {
+            'offering_id': offering_id,
+            'course_code': offering.course.course_code,
+            'course_name': offering.course.course_name,
+            'section': offering.section_number,
+            'term': offering.term.term_name
+        }
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'course': course_info,
+                'students': summary
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting grade summary: {str(e)}")
+        return jsonify({'status': 'error', 'message': 'Failed to get grade summary'}), 500
+
+@faculty_bp.route('/grades/finalize', methods=['POST'])
+@jwt_required()
+@faculty_required
+def finalize_grades():
+    """Finalize grades for one or more students"""
+    try:
+        data = request.get_json()
+        grades = data.get('grades', [])
+        
+        if not grades:
+            return jsonify({'status': 'error', 'message': 'No grades provided'}), 400
+        
+        # Get current user using JWT
+        user_id = get_jwt_identity()
+        user = get_user_by_id(user_id)
+        
+        if not user or not user.faculty:
+            return jsonify({'status': 'error', 'message': 'Faculty profile not found'}), 404
+            
+        faculty = user.faculty
+        
+        # Verify faculty access to all enrollments
+        enrollment_ids = [g['enrollment_id'] for g in grades]
+        
+        # Check authorization
+        authorized_count = db.session.query(Enrollment).join(
+            CourseOffering
+        ).filter(
+            Enrollment.enrollment_id.in_(enrollment_ids),
+            CourseOffering.faculty_id == faculty.faculty_id
+        ).count()
+        
+        if authorized_count != len(enrollment_ids):
+            return jsonify({'status': 'error', 'message': 'Unauthorized access to some enrollments'}), 403
+        
+        # Process grades
+        success_count = 0
+        errors = []
+        
+        for grade_data in grades:
+            enrollment_id = grade_data['enrollment_id']
+            final_grade = grade_data['final_grade']
+            override_reason = grade_data.get('override_reason')
+            
+            success, message = gpa_service.finalize_grade(
+                enrollment_id, 
+                final_grade, 
+                override_reason
+            )
+            
+            if success:
+                success_count += 1
+            else:
+                errors.append({
+                    'enrollment_id': enrollment_id,
+                    'error': message
+                })
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Successfully finalized {success_count} grades',
+            'data': {
+                'success_count': success_count,
+                'total': len(grades),
+                'errors': errors
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error finalizing grades: {str(e)}")
+        return jsonify({'status': 'error', 'message': 'Failed to finalize grades'}), 500

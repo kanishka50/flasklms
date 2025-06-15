@@ -1,6 +1,8 @@
 # backend/api/student/routes.py - CLEANED VERSION (Remove attendance routes)
 from flask import Blueprint, jsonify, request, current_app
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import current_user, jwt_required, get_jwt_identity
+from flask_login import login_required, current_user
+from backend.models.user import Student
 from backend.services.student_service import student_service
 from backend.services.assessment_service import assessment_service
 from backend.services.auth_service import get_user_by_id
@@ -16,6 +18,7 @@ from backend.extensions import db
 import os
 from werkzeug.utils import secure_filename
 from backend.services.prediction_service import PredictionService
+from backend.services.gpa_service import gpa_service 
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
@@ -276,59 +279,26 @@ def get_all_student_assessments():
             'message': 'Failed to load assessments'
         }), 500
 
-@student_bp.route('/grades/summary', methods=['GET'])
-@jwt_required()
+@student_bp.route('/api/student/grades/summary', methods=['GET'])
+@login_required
 @student_required
 def get_grade_summary():
-    """Get grade summary for student"""
+    """Get student's grade summary including GPA"""
     try:
-        # Get current user
-        user_id = get_jwt_identity()
-        user = get_user_by_id(user_id)
+        user_id = current_user.user_id
+        student = Student.query.filter_by(user_id=user_id).first()
         
-        if not user or not user.student:
-            return jsonify({
-                'status': 'error',
-                'message': 'Student profile not found'
-            }), 404
+        if not student:
+            return jsonify({'status': 'error', 'message': 'Student not found'}), 404
         
-        student_id = user.student.student_id
+        # Get current GPA
+        current_gpa = float(student.gpa) if student.gpa else 0.0
         
-        # Get all assessments with grades
-        assessments = assessment_service.get_student_assessments(student_id)
-        
-        # Calculate summary statistics
-        graded_assessments = [a for a in assessments if a['score'] is not None]
-        
-        if graded_assessments:
-            total_points = sum(a['score'] for a in graded_assessments)
-            total_possible = sum(a['max_score'] for a in graded_assessments)
-            overall_percentage = (total_points / total_possible * 100) if total_possible > 0 else 0
-            
-            # Count by grade
-            grade_counts = {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'F': 0}
-            for assessment in graded_assessments:
-                percentage = assessment['percentage']
-                if percentage >= 90:
-                    grade_counts['A'] += 1
-                elif percentage >= 80:
-                    grade_counts['B'] += 1
-                elif percentage >= 70:
-                    grade_counts['C'] += 1
-                elif percentage >= 60:
-                    grade_counts['D'] += 1
-                else:
-                    grade_counts['F'] += 1
-        else:
-            overall_percentage = 0
-            grade_counts = {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'F': 0}
-        
+        # Get grade summary data
         summary = {
-            'total_assessments': len(assessments),
-            'graded_assessments': len(graded_assessments),
-            'pending_assessments': len(assessments) - len(graded_assessments),
-            'overall_percentage': round(overall_percentage, 2),
-            'grade_distribution': grade_counts
+            'current_gpa': current_gpa,
+            'grade_distribution': [],  # You can implement this later
+            'term_history': []  # You can implement this later
         }
         
         return jsonify({
@@ -338,10 +308,7 @@ def get_grade_summary():
         
     except Exception as e:
         logger.error(f"Error getting grade summary: {str(e)}")
-        return jsonify({
-            'status': 'error',
-            'message': 'Failed to load grade summary'
-        }), 500
+        return jsonify({'status': 'error', 'message': 'Failed to get grade summary'}), 500
     
 @student_bp.route('/courses/<string:course_id>', methods=['GET'])
 @jwt_required()
