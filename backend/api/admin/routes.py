@@ -2,13 +2,14 @@ from flask import Blueprint, request, jsonify, current_app
 from backend.models import User, Student, Faculty, Course, CourseOffering, Enrollment, Prediction, Alert
 from backend.extensions import db
 from backend.models.alert import AlertType
+from backend.services import prediction_service
 from backend.utils.api import api_response, error_response
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from backend.middleware.auth_middleware import admin_required
 from werkzeug.security import generate_password_hash
 from sqlalchemy import desc, or_, func
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from backend.services.alert_service import AlertService
 from backend.services.prediction_analytics_service import PredictionAnalyticsService
 from backend.models import ModelVersion
@@ -301,6 +302,7 @@ def create_user():
     """Create a new user"""
     try:
         data = request.get_json()
+        logger.info(f"Creating user with data: {data}")
         
         # Validate required fields
         required_fields = ['username', 'email', 'password', 'user_type']
@@ -315,13 +317,15 @@ def create_user():
         if User.query.filter_by(email=data['email']).first():
             return error_response("Email already exists", 400)
         
+        logger.info("About to create User object")
         # Create user
         user = User(
             username=data['username'],
             email=data['email'],
-             password=['assword'],
+            password=data['password'],
             user_type=data['user_type']
         )
+        logger.info("User object created successfully")
         
         # Set is_active if the model has this field
         if hasattr(User, 'is_active'):
@@ -332,11 +336,14 @@ def create_user():
         
         # Create type-specific record
         if user.user_type == 'student':
+            from datetime import date  # Make sure this import is at the top of your file
+            
             student = Student(
                 user_id=user.user_id,
                 student_id=f"STU{user.user_id:06d}",
                 first_name=data.get('first_name', ''),
-                last_name=data.get('last_name', '')
+                last_name=data.get('last_name', ''),
+                enrollment_date=data.get('enrollment_date', date.today())  # Fixed: Added enrollment_date
             )
             # Add optional fields if they exist in the model
             if hasattr(Student, 'program_code'):
