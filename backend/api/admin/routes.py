@@ -319,7 +319,7 @@ def create_user():
         user = User(
             username=data['username'],
             email=data['email'],
-            password_hash=generate_password_hash(data['password']),
+             password=['assword'],
             user_type=data['user_type']
         )
         
