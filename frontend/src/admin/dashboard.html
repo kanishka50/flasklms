@@ -13,20 +13,51 @@
     
     <!-- Custom CSS -->
     <link href="../css/main.css" rel="stylesheet">
+    
+    <style>
+        /* Simple clean styles for navigation and sidebar */
+        .admin-nav {
+            background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
+        }
+        
+        .admin-sidebar {
+            background: linear-gradient(180deg, #374151 0%, #4b5563 100%);
+        }
+        
+        .sidebar-link {
+            color: #d1d5db;
+            transition: all 0.2s ease;
+        }
+        
+        .sidebar-link:hover {
+            background-color: #4b5563;
+            color: #ffffff;
+        }
+        
+        .sidebar-link.active {
+            background-color: #3b82f6;
+            color: #ffffff;
+        }
+        
+        .sidebar-link i {
+            width: 20px;
+            text-align: center;
+        }
+    </style>
 </head>
 <body class="bg-gray-100">
     <div class="min-h-screen">
         <!-- Navigation -->
-        <nav class="bg-gray-800 text-white shadow-lg">
+        <nav class="admin-nav text-white shadow-lg">
             <div class="container mx-auto px-4">
                 <div class="flex justify-between items-center py-4">
                     <div class="flex items-center">
-                        <i class="fas fa-user-shield text-2xl mr-3"></i>
+                        <i class="fas fa-user-shield text-2xl mr-3 text-blue-400"></i>
                         <h1 class="text-xl font-bold">Admin Panel</h1>
                     </div>
                     <div class="flex items-center space-x-4">
-                        <span id="username" class="text-sm">Admin</span>
-                        <button id="logoutBtn" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded text-sm">
+                        <span id="username" class="text-sm text-gray-300">Admin</span>
+                        <button id="logoutBtn" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded text-sm transition-colors">
                             <i class="fas fa-sign-out-alt mr-2"></i>Logout
                         </button>
                     </div>
@@ -37,51 +68,51 @@
         <!-- Sidebar and Content -->
         <div class="flex">
             <!-- Sidebar -->
-            <aside class="w-64 bg-white shadow-md min-h-screen">
+            <aside class="w-64 admin-sidebar min-h-screen shadow-lg">
                 <nav class="p-4">
                     <ul class="space-y-2">
                         <li>
-                            <a href="dashboard.html" class="flex items-center p-3 text-gray-700 hover:bg-gray-100 rounded-md bg-gray-100">
-                                <i class="fas fa-tachometer-alt w-5"></i>
+                            <a href="dashboard.html" class="sidebar-link active flex items-center p-3 rounded-md">
+                                <i class="fas fa-tachometer-alt"></i>
                                 <span class="ml-3">Dashboard</span>
                             </a>
                         </li>
                         <li>
-                            <a href="users.html" class="flex items-center p-3 text-gray-700 hover:bg-gray-100 rounded-md">
-                                <i class="fas fa-users w-5"></i>
+                            <a href="users.html" class="sidebar-link flex items-center p-3 rounded-md">
+                                <i class="fas fa-users"></i>
                                 <span class="ml-3">User Management</span>
                             </a>
                         </li>
                         <li>
-                            <a href="courses.html" class="flex items-center p-3 text-gray-700 hover:bg-gray-100 rounded-md">
-                                <i class="fas fa-book w-5"></i>
+                            <a href="courses.html" class="sidebar-link flex items-center p-3 rounded-md">
+                                <i class="fas fa-book"></i>
                                 <span class="ml-3">Course Management</span>
                             </a>
                         </li>
                         <li>
-                            <a href="system-alerts.html" class="flex items-center p-3 text-gray-700 hover:bg-gray-100 rounded-md">
-                                <i class="fas fa-bell w-5"></i>
+                            <a href="system-alerts.html" class="sidebar-link flex items-center p-3 rounded-md">
+                                <i class="fas fa-bell"></i>
                                 <span class="ml-3">System Alerts</span>
                             </a>
                         </li>
                         <li>
-                            <a href="predictions.html" class="flex items-center p-3 text-gray-700 hover:bg-gray-100 rounded-md">
-                                <i class="fas fa-chart-line w-5"></i>
+                            <a href="predictions.html" class="sidebar-link flex items-center p-3 rounded-md">
+                                <i class="fas fa-chart-line"></i>
                                 <span class="ml-3">Predictions Overview</span>
                             </a>
                         </li>
                         <li>
-                            <a href="reports.html" class="flex items-center p-3 text-gray-700 hover:bg-gray-100 rounded-md">
-                                <i class="fas fa-file-alt w-5"></i>
+                            <a href="reports.html" class="sidebar-link flex items-center p-3 rounded-md">
+                                <i class="fas fa-file-alt"></i>
                                 <span class="ml-3">Reports</span>
                             </a>
                         </li>
-                        <li>
-                            <a href="#" class="flex items-center p-3 text-gray-700 hover:bg-gray-100 rounded-md">
-                                <i class="fas fa-cog w-5"></i>
+                        <!-- <li>
+                            <a href="#" class="sidebar-link flex items-center p-3 rounded-md">
+                                <i class="fas fa-cog"></i>
                                 <span class="ml-3">System Settings</span>
                             </a>
-                        </li>
+                        </li> -->
                     </ul>
                 </nav>
             </aside>

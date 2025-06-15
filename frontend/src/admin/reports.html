@@ -6,53 +6,110 @@
     <title>Reports - Admin Panel</title>
     <link href="../css/tailwind.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+     <!-- Custom CSS -->
+    <link href="../css/main.css" rel="stylesheet">
+    
+    <style>
+        /* Simple clean styles for navigation and sidebar */
+        .admin-nav {
+            background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
+        }
+        
+        .admin-sidebar {
+            background: linear-gradient(180deg, #374151 0%, #4b5563 100%);
+        }
+        
+        .sidebar-link {
+            color: #d1d5db;
+            transition: all 0.2s ease;
+        }
+        
+        .sidebar-link:hover {
+            background-color: #4b5563;
+            color: #ffffff;
+        }
+        
+        .sidebar-link.active {
+            background-color: #3b82f6;
+            color: #ffffff;
+        }
+        
+        .sidebar-link i {
+            width: 20px;
+            text-align: center;
+        }
+    </style>
 </head>
 <body class="bg-gray-100">
     <!-- Navigation -->
-    <nav class="bg-white shadow-lg">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-16">
-                <div class="flex items-center">
-                    <i class="fas fa-user-shield text-2xl text-blue-600 mr-3"></i>
-                    <h1 class="text-xl font-semibold">Admin Panel</h1>
-                </div>
-                <div class="flex items-center space-x-4">
-                    <span class="text-gray-700">Welcome, <span id="username" class="font-semibold">admin</span></span>
-                    <button id="logoutBtn" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded">
-                        <i class="fas fa-sign-out-alt mr-2"></i>Logout
-                    </button>
+        <nav class="admin-nav text-white shadow-lg">
+            <div class="container mx-auto px-4">
+                <div class="flex justify-between items-center py-4">
+                    <div class="flex items-center">
+                        <i class="fas fa-user-shield text-2xl mr-3 text-blue-400"></i>
+                        <h1 class="text-xl font-bold">Admin Panel</h1>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <span id="username" class="text-sm text-gray-300">Admin</span>
+                        <button id="logoutBtn" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded text-sm transition-colors">
+                            <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                        </button>
+                    </div>
                 </div>
             </div>
-        </div>
-    </nav>
+        </nav>
 
-    <div class="flex">
-        <!-- Sidebar -->
-        <aside class="w-64 bg-gray-800 min-h-screen">
-            <nav class="mt-5">
-                <a href="dashboard.html" class="block py-2.5 px-4 text-gray-300 hover:bg-gray-700 hover:text-white">
-                    <i class="fas fa-tachometer-alt mr-3"></i>Dashboard
-                </a>
-                <a href="users.html" class="block py-2.5 px-4 text-gray-300 hover:bg-gray-700 hover:text-white">
-                    <i class="fas fa-users mr-3"></i>User Management
-                </a>
-                <a href="courses.html" class="block py-2.5 px-4 text-gray-300 hover:bg-gray-700 hover:text-white">
-                    <i class="fas fa-book mr-3"></i>Course Management
-                </a>
-                <a href="system-alerts.html" class="block py-2.5 px-4 text-gray-300 hover:bg-gray-700 hover:text-white">
-                    <i class="fas fa-bell mr-3"></i>System Alerts
-                </a>
-                <a href="predictions.html" class="block py-2.5 px-4 text-gray-300 hover:bg-gray-700 hover:text-white">
-                    <i class="fas fa-chart-line mr-3"></i>Predictions Overview
-                </a>
-                <a href="reports.html" class="block py-2.5 px-4 bg-gray-700 text-white">
-                    <i class="fas fa-file-alt mr-3"></i>Reports
-                </a>
-                <a href="settings.html" class="block py-2.5 px-4 text-gray-300 hover:bg-gray-700 hover:text-white">
-                    <i class="fas fa-cog mr-3"></i>System Settings
-                </a>
-            </nav>
-        </aside>
+        <!-- Sidebar and Content -->
+        <div class="flex">
+            <!-- Sidebar -->
+            <aside class="w-64 admin-sidebar min-h-screen shadow-lg">
+                <nav class="p-4">
+                    <ul class="space-y-2">
+                        <li>
+                            <a href="dashboard.html" class="sidebar-link  flex items-center p-3 rounded-md">
+                                <i class="fas fa-tachometer-alt"></i>
+                                <span class="ml-3">Dashboard</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="users.html" class="sidebar-link flex items-center p-3 rounded-md">
+                                <i class="fas fa-users"></i>
+                                <span class="ml-3">User Management</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="courses.html" class="sidebar-link flex items-center p-3 rounded-md">
+                                <i class="fas fa-book"></i>
+                                <span class="ml-3">Course Management</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="system-alerts.html" class="sidebar-link flex items-center p-3 rounded-md">
+                                <i class="fas fa-bell"></i>
+                                <span class="ml-3">System Alerts</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="predictions.html" class="sidebar-link flex  items-center p-3 rounded-md">
+                                <i class="fas fa-chart-line"></i>
+                                <span class="ml-3">Predictions Overview</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="reports.html" class="sidebar-link active flex items-center p-3 rounded-md">
+                                <i class="fas fa-file-alt"></i>
+                                <span class="ml-3">Reports</span>
+                            </a>
+                        </li>
+                        <!-- <li>
+                            <a href="#" class="sidebar-link flex items-center p-3 rounded-md">
+                                <i class="fas fa-cog"></i>
+                                <span class="ml-3">System Settings</span>
+                            </a>
+                        </li> -->
+                    </ul>
+                </nav>
+            </aside>
 
         <!-- Main Content -->
         <main class="flex-1 p-6">

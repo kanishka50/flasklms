@@ -85,17 +85,20 @@ class FacultyService:
     def get_students_by_course(offering_id):
         """Get all students enrolled in a course offering"""
         try:
+            # ✅ FIXED: Join with User table to get email
             students = db.session.query(
                 Student.student_id,
                 Student.first_name,
                 Student.last_name,
-                Student.email,
+                User.email,  # ✅ Get email from User table
                 Student.program_code,
                 Student.year_of_study,
                 Enrollment.enrollment_id,
                 Enrollment.final_grade
             ).join(
                 Enrollment, Enrollment.student_id == Student.student_id
+            ).join(
+                User, User.user_id == Student.user_id  # ✅ ADD this join
             ).filter(
                 Enrollment.offering_id == offering_id,
                 Enrollment.enrollment_status == 'enrolled'
@@ -123,13 +126,15 @@ class FacultyService:
                     'attendance_rate': attendance_rate,
                     'current_grade': student.final_grade,
                     'predicted_grade': latest_prediction.predicted_grade if latest_prediction else None,
-                    'risk_level': latest_prediction.risk_level if latest_prediction else None
+                    'risk_level': latest_prediction.risk_level if latest_prediction else 'unknown'
                 })
             
             return result
             
         except Exception as e:
             logger.error(f"Error getting students by course: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return []
     
     @staticmethod
@@ -379,7 +384,7 @@ class FacultyService:
                 Student.student_id,
                 Student.first_name,
                 Student.last_name,
-                User.email,  # Get email from User table
+                User.email,  # ✅ Already correct
                 Student.program_code,
                 Student.year_of_study,
                 Enrollment.enrollment_id,
@@ -390,7 +395,7 @@ class FacultyService:
                 Course.course_name,
                 CourseOffering.section_number
             ).join(
-                User, User.user_id == Student.user_id  # Join with User table
+                User, User.user_id == Student.user_id  # ✅ Make sure this join exists
             ).join(
                 Enrollment, Enrollment.student_id == Student.student_id
             ).join(

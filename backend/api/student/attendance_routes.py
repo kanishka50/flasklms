@@ -1,4 +1,4 @@
-# backend/api/student/attendance_routes.py
+# backend/api/student/attendance_routes.py - FIXED VERSION
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from backend.services.attendance_service import attendance_service
@@ -114,23 +114,23 @@ def get_student_attendance_summary():
         
         # Get attendance summary by course
         from backend.models.academic import Enrollment, CourseOffering, Course
-        from backend.models.attendance import Attendance
+        from backend.models.tracking import Attendance
         from backend.extensions import db
         from sqlalchemy import func, case
         
-        # Query to get course-wise attendance summary
+        # FIXED: Query to get course-wise attendance summary with corrected case() syntax
         summary_query = db.session.query(
             CourseOffering.offering_id,
             Course.course_code,
             Course.course_name,
-            CourseOffering.section,
+            CourseOffering.section_number,
             func.count(Attendance.attendance_id).label('total_classes'),
-            func.sum(case([(Attendance.status == 'present', 1)], else_=0)).label('present_count'),
-            func.sum(case([(Attendance.status == 'absent', 1)], else_=0)).label('absent_count'),
-            func.sum(case([(Attendance.status == 'late', 1)], else_=0)).label('late_count'),
-            func.sum(case([(Attendance.status == 'excused', 1)], else_=0)).label('excused_count')
+            func.sum(case((Attendance.status == 'present', 1), else_=0)).label('present_count'),
+            func.sum(case((Attendance.status == 'absent', 1), else_=0)).label('absent_count'),
+            func.sum(case((Attendance.status == 'late', 1), else_=0)).label('late_count'),
+            func.sum(case((Attendance.status == 'excused', 1), else_=0)).label('excused_count')
         ).select_from(Enrollment).join(
-            CourseOffering, Enrollment.course_offering_id == CourseOffering.offering_id
+            CourseOffering, Enrollment.offering_id == CourseOffering.offering_id
         ).join(
             Course, CourseOffering.course_id == Course.course_id
         ).join(
@@ -141,7 +141,7 @@ def get_student_attendance_summary():
             CourseOffering.offering_id,
             Course.course_code,
             Course.course_name,
-            CourseOffering.section
+            CourseOffering.section_number
         ).all()
         
         # Format summary data
@@ -155,7 +155,7 @@ def get_student_attendance_summary():
                 'offering_id': record.offering_id,
                 'course_code': record.course_code,
                 'course_name': record.course_name,
-                'section': record.section,
+                'section': record.section_number,
                 'total_classes': total,
                 'present_count': present,
                 'absent_count': record.absent_count or 0,
@@ -229,5 +229,5 @@ def get_student_attendance_calendar():
         logger.error(f"Error getting student attendance calendar: {str(e)}")
         return error_response('Failed to load calendar data', 500)
 
-# Add the new routes to the existing student routes file
-# You should import and register this blueprint in your main routes file
+# Export the blueprint for import
+__all__ = ['student_attendance_bp']
