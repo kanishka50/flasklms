@@ -195,54 +195,54 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function displayCourses(courses) {
-        if (!courses || courses.length === 0) {
-            coursesTableBody.innerHTML = `
-                <tr>
-                    <td colspan="5" class="px-6 py-4 text-center text-gray-500">
-                        No courses found
-                    </td>
-                </tr>
-            `;
-            return;
-        }
-        
-        const html = courses.map(course => {
-            // Calculate total enrollments for this course (demo value)
-            const enrollments = course.active_offerings * Math.floor(Math.random() * 30 + 10);
-            
-            return `
-                <tr class="hover:bg-gray-50">
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <div>
-                            <div class="text-sm font-medium text-gray-900">${course.course_code}</div>
-                            <div class="text-sm text-gray-500">${course.course_name}</div>
-                        </div>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
-                            ${course.credits} credits
-                        </span>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        ${course.active_offerings || 0} active
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        ${enrollments} students
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <button onclick="editCourse(${course.course_id})" class="text-indigo-600 hover:text-indigo-900 mr-3">
-                            <i class="fas fa-edit"></i> Edit
-                        </button>
-                        <button onclick="viewOfferings(${course.course_id})" class="text-green-600 hover:text-green-900">
-                            <i class="fas fa-list"></i> Offerings
-                        </button>
-                    </td>
-                </tr>
-            `;
-        }).join('');
-        
-        coursesTableBody.innerHTML = html;
+    if (!courses || courses.length === 0) {
+        coursesTableBody.innerHTML = `
+            <tr>
+                <td colspan="5" class="px-6 py-4 text-center text-gray-500">
+                    No courses found
+                </td>
+            </tr>
+        `;
+        return;
     }
+    
+    const html = courses.map(course => {
+        // Calculate total enrollments for this course (demo value)
+        const enrollments = course.active_offerings * Math.floor(Math.random() * 30 + 10);
+        
+        return `
+            <tr class="hover:bg-gray-50">
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <div>
+                        <div class="text-sm font-medium text-gray-900">${course.course_code}</div>
+                        <div class="text-sm text-gray-500">${course.course_name}</div>
+                    </div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
+                        ${course.credits} credits
+                    </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    ${course.active_offerings || 0} active
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    ${enrollments} students
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <button onclick="window.editCourse('${course.course_id}')" class="text-indigo-600 hover:text-indigo-900 mr-3">
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
+                    <button onclick="window.viewOfferings('${course.course_id}')" class="text-green-600 hover:text-green-900">
+                        <i class="fas fa-list"></i> Offerings
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+    
+    coursesTableBody.innerHTML = html;
+}
     
     function updatePagination(data) {
         const start = (data.current_page - 1) * data.per_page + 1;
@@ -263,24 +263,21 @@ document.addEventListener('DOMContentLoaded', function() {
         loadCourses();
     }
     
-    function openCourseModal(courseId = null) {
-        if (courseId) {
-            modalTitle.textContent = 'Edit Course';
-            // Load course data
-            const course = courses.find(c => c.course_id === courseId);
-            if (course) {
-                document.getElementById('courseId').value = course.course_id;
-                document.getElementById('modalCourseCode').value = course.course_code;
-                document.getElementById('modalCourseName').value = course.course_name;
-                document.getElementById('modalCredits').value = course.credits;
-                document.getElementById('modalDescription').value = course.description || '';
-            }
-        } else {
-            modalTitle.textContent = 'Add New Course';
-            courseForm.reset();
-        }
-        
-        courseModal.classList.remove('hidden');
+    function openCourseModal(course = null) {
+    if (course) {
+        modalTitle.textContent = 'Edit Course';
+        // Load course data
+        document.getElementById('courseId').value = course.course_id;
+        document.getElementById('modalCourseCode').value = course.course_code;
+        document.getElementById('modalCourseName').value = course.course_name;
+        document.getElementById('modalCredits').value = course.credits;
+        document.getElementById('modalDescription').value = course.description || '';
+    } else {
+        modalTitle.textContent = 'Add New Course';
+        courseForm.reset();
+    }
+    
+    courseModal.classList.remove('hidden');
     }
     
     function closeCourseModal() {
@@ -325,14 +322,18 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Global functions for inline buttons
     window.editCourse = function(courseId) {
-        openCourseModal(courseId);
+    // Find the course by its ID
+    const course = courses.find(c => c.course_id === courseId);
+    if (course) {
+        openCourseModal(course);
+    }
     };
     
     window.viewOfferings = function(courseId) {
-        // Redirect to offerings page or show offerings modal
-        alert(`View offerings for course ID: ${courseId}`);
-        // In a real implementation, this would navigate to a course details page
-        // window.location.href = `course-offerings.html?id=${courseId}`;
+    // Redirect to offerings page or show offerings modal
+    alert(`View offerings for course ID: ${courseId}`);
+    // In a real implementation, this would navigate to a course details page
+    // window.location.href = `course-offerings.html?id=${courseId}`;
     };
     
     // Set active sidebar item

@@ -594,8 +594,12 @@ def create_course():
         if Course.query.filter_by(course_code=data['course_code']).first():
             return error_response("Course code already exists", 400)
         
+        # Generate a unique course_id (use course_code as the ID or generate a unique one)
+        course_id = data['course_code']  # Or you can use: f"CRS{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        
         # Create course
         course = Course(
+            course_id=course_id,  # Add this required parameter
             course_code=data['course_code'],
             course_name=data['course_name'],
             credits=data['credits'],
@@ -615,7 +619,8 @@ def create_course():
         logger.error(f"Error creating course: {str(e)}")
         db.session.rollback()
         return error_response("Failed to create course", 500)
-
+    
+    
 @admin_bp.route('/courses/<int:course_id>', methods=['PUT'])
 @jwt_required()
 @admin_required
