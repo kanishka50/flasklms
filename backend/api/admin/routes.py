@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify, current_app
-from backend.models import User, Student, Faculty, Course, CourseOffering, Enrollment, Prediction, Alert
+from backend.models import User, Student, Faculty, Course, CourseOffering, Enrollment, Prediction, Alert,AcademicTerm
 from backend.extensions import db
 from backend.models.alert import AlertType
 from backend.services import prediction_service

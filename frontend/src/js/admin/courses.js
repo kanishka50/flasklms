@@ -696,8 +696,8 @@ window.deleteOffering = async function(offeringId, courseCode) {
 
 async function loadTermsAndFaculty() {
     try {
-        // Load academic terms
-        const termsResponse = await apiClient.get('academic/terms');
+        // Load academic terms - FIXED ROUTE
+        const termsResponse = await apiClient.get('admin/terms');  // Changed from 'academic/terms'
         if (termsResponse.status === 'success' && termsResponse.data) {
             const termSelect = document.getElementById('termId');
             termsResponse.data.terms.forEach(term => {
@@ -711,8 +711,8 @@ async function loadTermsAndFaculty() {
             });
         }
         
-        // Load faculty
-        const facultyResponse = await apiClient.get('faculty/list');
+        // Load faculty - FIXED ROUTE
+        const facultyResponse = await apiClient.get('admin/faculty/list');  // Changed from 'faculty/list'
         if (facultyResponse.status === 'success' && facultyResponse.data) {
             const facultySelect = document.getElementById('facultyId');
             facultyResponse.data.faculty.forEach(faculty => {
