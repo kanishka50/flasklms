@@ -105,7 +105,12 @@ class CourseService:
                     existing.enrollment_date = datetime.utcnow().date()
                     offering.enrolled_count += 1
                     db.session.commit()
-                    return existing, None
+                    
+                    # Return successful enrollment data
+                    return {
+                        'enrollment_id': existing.enrollment_id,
+                        'message': 'Successfully re-enrolled in course'
+                    }, None
             
             # Create new enrollment
             enrollment = Enrollment(
@@ -121,7 +126,11 @@ class CourseService:
             db.session.add(enrollment)
             db.session.commit()
             
-            return enrollment, None
+            # Return successful enrollment data
+            return {
+                'enrollment_id': enrollment.enrollment_id,
+                'message': 'Successfully enrolled in course'
+            }, None
             
         except Exception as e:
             logger.error(f"Error enrolling student: {str(e)}")

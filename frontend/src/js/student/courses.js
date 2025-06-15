@@ -114,8 +114,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             if (coursesResult.status === 'fulfilled') {
-                displayCourses();
-                updateStats();
                 // Update charts only once after DOM is ready
                 requestAnimationFrame(() => {
                     updateProgressCharts();
@@ -145,77 +143,41 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     async function loadCourses() {
+        showLoading();
+        
         try {
-            const termId = elements.termFilter?.value || null;
-            const response = await studentApi.getEnrolledCourses(termId);
+            const response = await studentApi.getCourses();
             
-            if (response.status === 'success' && response.data && response.data.courses) {
-                state.allCourses = response.data.courses;
+            if (response.status === 'success' && response.data) {
+                state.allCourses = response.data.courses || [];
                 state.filteredCourses = [...state.allCourses];
-                return state.allCourses;
+                updateStats();
+                displayCourses();
             }
         } catch (error) {
             console.error('Error loading courses:', error);
-            // Use mock data for development/testing
-            state.allCourses = getMockCourses();
-            state.filteredCourses = [...state.allCourses];
+            showError('Failed to load courses');
+        } finally {
+            hideLoading();
         }
     }
     
-    // Mock data for development
-    function getMockCourses() {
-        return [
-            {
-                course_id: 1,
-                course_code: 'CS101',
-                course_name: 'Introduction to Computer Science',
-                credits: 3,
-                enrollment_status: 'enrolled',
-                current_grade: 'B+',
-                predicted_grade: 'A-',
-                attendance_rate: 85,
-                offering_id: 1
-            },
-            {
-                course_id: 2,
-                course_code: 'MATH201',
-                course_name: 'Calculus II',
-                credits: 4,
-                enrollment_status: 'enrolled',
-                current_grade: 'C+',
-                predicted_grade: 'B-',
-                attendance_rate: 72,
-                offering_id: 2
-            },
-            {
-                course_id: 3,
-                course_code: 'PHYS101',
-                course_name: 'Physics I',
-                credits: 4,
-                enrollment_status: 'enrolled',
-                current_grade: 'A',
-                predicted_grade: 'A',
-                attendance_rate: 95,
-                offering_id: 3
-            }
-        ];
-    }
-    
     function displayCourses() {
-        if (!state.filteredCourses || state.filteredCourses.length === 0) {
+        if (!elements.coursesContainer) return;
+        
+        const coursesToDisplay = state.filteredCourses.length > 0 ? state.filteredCourses : state.allCourses;
+        
+        if (coursesToDisplay.length === 0) {
             showEmptyState();
             return;
         }
         
         hideEmptyState();
         
-        if (elements.coursesContainer) {
-            elements.coursesContainer.innerHTML = state.filteredCourses
-                .map(course => createCourseCard(course))
-                .join('');
-            
-            attachCourseCardListeners();
-        }
+        elements.coursesContainer.innerHTML = coursesToDisplay.map(course => createCourseCard(course)).join('');
+        
+        // Attach event listeners after creating cards
+        attachCourseCardListeners();
     }
     
     function createCourseCard(course) {
@@ -343,11 +305,19 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function updateStats() {
-        const totalCourses = state.filteredCourses.length;
-        const atRiskCourses = state.filteredCourses.filter(isStudentAtRisk).length;
+        // Count total courses
+        const totalCourses = state.allCourses.length;
         
-        if (elements.totalCoursesCount) elements.totalCoursesCount.textContent = totalCourses;
-        if (elements.atRiskCoursesCount) elements.atRiskCoursesCount.textContent = atRiskCourses;
+        // Count at-risk courses
+        const atRiskCount = state.allCourses.filter(course => isStudentAtRisk(course)).length;
+        
+        // Update display
+        if (elements.totalCoursesCount) {
+            elements.totalCoursesCount.textContent = totalCourses;
+        }
+        if (elements.atRiskCoursesCount) {
+            elements.atRiskCoursesCount.textContent = atRiskCount;
+        }
     }
     
     function updateDashboardStats() {
@@ -516,12 +486,6 @@ document.addEventListener('DOMContentLoaded', function() {
         elements.attendanceTrend.innerHTML = html;
     }
     
-    /* Temporarily commented out - Chart causing issues
-    function updateGradeChart() {
-        // Chart code removed temporarily
-    }
-    */
-    
     async function viewCourseDetails(courseId) {
         const course = state.allCourses.find(c => c.course_id == courseId);
         if (!course) {
@@ -657,6 +621,11 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
+    function hideLoading() {
+        const loader = document.getElementById('loader');
+        if (loader) loader.style.display = 'none';
+    }
+    
     function showEmptyState() {
         if (elements.coursesContainer) elements.coursesContainer.innerHTML = '';
         if (elements.emptyState) elements.emptyState.classList.remove('hidden');
@@ -668,6 +637,10 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function showError(message) {
         showNotification(message, 'error');
+    }
+    
+    function showSuccess(message) {
+        showNotification(message, 'success');
     }
     
     function showNotification(message, type = 'info') {

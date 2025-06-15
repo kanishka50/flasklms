@@ -1,4 +1,6 @@
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOMContentLoaded fired');
+    
     // Elements
     const elements = {
         searchInput: document.getElementById('searchInput'),
@@ -30,6 +32,7 @@ document.addEventListener('DOMContentLoaded', function() {
     init();
     
     function init() {
+        console.log('init() called');
         // Auth guard will handle authentication
         if (!authApi.hasRole('student')) {
             return;
@@ -40,15 +43,26 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function setupEventListeners() {
+        console.log('setupEventListeners() called');
+        
         // Search and filters
         elements.searchInput?.addEventListener('input', debounce(filterCourses, 300));
         elements.departmentFilter?.addEventListener('change', filterCourses);
         elements.creditsFilter?.addEventListener('change', filterCourses);
         elements.dayFilter?.addEventListener('change', filterCourses);
         
-        // Modal controls
+        // Modal controls - Add debug wrapper
         elements.cancelEnrollment?.addEventListener('click', closeEnrollmentModal);
-        elements.confirmEnrollment?.addEventListener('click', confirmEnrollment);
+        
+        // Debug wrapper for confirmEnrollment
+        if (elements.confirmEnrollment) {
+            console.log('Adding click listener to confirmEnrollment button');
+            elements.confirmEnrollment.addEventListener('click', function(e) {
+                console.log('Confirm button clicked');
+                console.log('Current state.selectedCourse:', state.selectedCourse);
+                confirmEnrollment();
+            });
+        }
         
         // Close modal on backdrop click
         elements.enrollmentModal?.addEventListener('click', function(e) {
@@ -66,14 +80,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 studentApi.getAvailableCourses()
             ]);
             
+            console.log('Enrolled courses response:', enrolledResponse);
+            console.log('Available courses response:', availableResponse);
+            
             // Process enrolled courses
-            if (enrolledResponse.status === 'success' && enrolledResponse.data) {
+            if (enrolledResponse && enrolledResponse.status === 'success' && enrolledResponse.data) {
                 state.enrolledCourses = enrolledResponse.data.courses || [];
                 updateEnrollmentStats();
             }
             
             // Process available courses
-            if (availableResponse.status === 'success' && availableResponse.data) {
+            if (availableResponse && availableResponse.status === 'success' && availableResponse.data) {
                 state.availableCourses = availableResponse.data.courses || [];
                 state.filteredCourses = [...state.availableCourses];
                 displayAvailableCourses();
@@ -175,9 +192,13 @@ document.addEventListener('DOMContentLoaded', function() {
         // Attach event listeners to enroll buttons
         document.querySelectorAll('.enroll-btn').forEach(btn => {
             btn.addEventListener('click', function() {
+                console.log('Enroll button clicked for course:', this.dataset.courseId);
                 const courseId = parseInt(this.dataset.courseId);
                 const course = state.availableCourses.find(c => c.offering_id === courseId);
-                if (course) showEnrollmentModal(course);
+                if (course) {
+                    console.log('Found course:', course);
+                    showEnrollmentModal(course);
+                }
             });
         });
     }
@@ -226,6 +247,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function showEnrollmentModal(course) {
+        console.log('showEnrollmentModal called with course:', course);
         state.selectedCourse = course;
         
         const newTotalCredits = state.totalEnrolledCredits + (course.credits || 0);
@@ -255,33 +277,65 @@ document.addEventListener('DOMContentLoaded', function() {
         `;
         
         elements.enrollmentModal.classList.remove('hidden');
+        console.log('Modal shown, state.selectedCourse is now:', state.selectedCourse);
     }
     
     function closeEnrollmentModal() {
+        console.log('closeEnrollmentModal called');
         elements.enrollmentModal.classList.add('hidden');
         state.selectedCourse = null;
     }
     
     async function confirmEnrollment() {
-        if (!state.selectedCourse) return;
-        
-        try {
-            showLoading();
-            closeEnrollmentModal();
-            
-            const response = await studentApi.enrollInCourse(state.selectedCourse.offering_id);
-            
-            if (response.status === 'success') {
-                showSuccess('Successfully enrolled in ' + state.selectedCourse.course_code);
-                // Reload data to update lists
-                await loadData();
-            }
-        } catch (error) {
-            showError(error.response?.data?.message || 'Failed to enroll in course');
-        } finally {
-            hideLoading();
-        }
+    if (!state.selectedCourse) {
+        console.error('No course selected for enrollment');
+        showError('Please select a course first');
+        return;
     }
+    
+    // Store the course info before closing modal
+    const courseToEnroll = state.selectedCourse;
+    
+    try {
+        showLoading();
+        closeEnrollmentModal(); // This sets state.selectedCourse to null
+        
+        console.log('Enrolling in course:', courseToEnroll.offering_id);
+        
+        // Use courseToEnroll instead of state.selectedCourse
+        const response = await studentApi.enrollInCourse(courseToEnroll.offering_id);
+        
+        console.log('Enrollment response:', response);
+        
+        if (response && response.status === 'success') {
+            showSuccess('Successfully enrolled in ' + courseToEnroll.course_code);
+            // Reload data to update lists
+            await loadData();
+        } else {
+            console.error('Enrollment failed with response:', response);
+            showError(response?.message || 'Failed to enroll in course');
+        }
+    } catch (error) {
+        console.error('Enrollment error caught:', error);
+        console.error('Error response:', error.response);
+        console.error('Error response data:', error.response?.data);
+        
+        // Check different error response structures
+        let errorMessage = 'Failed to enroll in course';
+        
+        if (error.response?.data?.message) {
+            errorMessage = error.response.data.message;
+        } else if (error.response?.data?.error) {
+            errorMessage = error.response.data.error;
+        } else if (error.message) {
+            errorMessage = error.message;
+        }
+        
+        showError(errorMessage);
+    } finally {
+        hideLoading();
+    }
+}
     
     // Utility functions
     function debounce(func, wait) {
@@ -337,4 +391,7 @@ document.addEventListener('DOMContentLoaded', function() {
             setTimeout(() => toast.remove(), 300);
         }, 4000);
     }
+    
+    // Log when script loads
+    console.log('course-enrollment.js loaded');
 });

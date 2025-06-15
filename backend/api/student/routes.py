@@ -1,5 +1,5 @@
 # backend/api/student/routes.py - CLEANED VERSION (Remove attendance routes)
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from backend.services.student_service import student_service
 from backend.services.assessment_service import assessment_service
@@ -642,19 +642,27 @@ def enroll_in_course():
         student_id = user.student.student_id
         offering_id = data['offering_id']
         
+        # Log the enrollment attempt
+        logger.info(f"Student {student_id} attempting to enroll in offering {offering_id}")
+        
         # Enroll student
-        enrollment, error = course_service.enroll_student(student_id, offering_id)
+        result, error = course_service.enroll_student(student_id, offering_id)
         
         if error:
+            logger.warning(f"Enrollment failed for student {student_id}: {error}")
             return error_response(error, 400)
         
+        logger.info(f"Student {student_id} successfully enrolled in offering {offering_id}")
+        
         return api_response({
-            'message': 'Successfully enrolled in course',
-            'enrollment_id': enrollment.enrollment_id
-        })
+            'enrollment_id': result['enrollment_id'],
+            'message': result['message']
+        }, 'Successfully enrolled in course')
         
     except Exception as e:
         logger.error(f"Error enrolling in course: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return error_response('Failed to enroll in course', 500)
 
 @student_bp.route('/courses/drop', methods=['POST'])
@@ -677,16 +685,24 @@ def drop_course():
         student_id = user.student.student_id
         offering_id = data['offering_id']
         
+        # Log the drop attempt
+        logger.info(f"Student {student_id} attempting to drop offering {offering_id}")
+        
         # Drop course
         success, message = course_service.drop_course(student_id, offering_id)
         
         if not success:
+            logger.warning(f"Drop failed for student {student_id}: {message}")
             return error_response(message, 400)
         
-        return api_response({'message': message})
+        logger.info(f"Student {student_id} successfully dropped offering {offering_id}")
+        
+        return api_response({'message': message}, 'Course dropped successfully')
         
     except Exception as e:
         logger.error(f"Error dropping course: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return error_response('Failed to drop course', 500)
     
 @student_bp.route('/upload-photo', methods=['POST'])
